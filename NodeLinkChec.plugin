@@ -1,0 +1,5 @@
+#!name = NodeLinkCheck
+#!desc = 一款支持Surge、QuantumultX、Loon的节点代理链路检测模块
+
+[Script]
+generic script-path=https://raw.githubusercontent.com/6otho/loon-/refs/heads/main/NodeLinkCheck.js, timeout=10, tag=代理鏈檢測, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/mini/Final.png
