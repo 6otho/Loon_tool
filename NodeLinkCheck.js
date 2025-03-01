@@ -21,7 +21,7 @@ let g;
     let subscriptionData;
     try {
       // 修改为你的自定义订阅地址，注意这里建议返回的是纯 JS 文件
-      const customBackendUrl = "http://subk.v5oo.eu.org/subscription.js";
+      const customBackendUrl = "http://subk.v5oo.eu.org";
       const res = await c.http.get({ url: customBackendUrl });
       c.log("自定义后端返回原始数据", res.body);
       try {
