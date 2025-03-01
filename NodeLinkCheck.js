@@ -1,4 +1,4 @@
-// NodeLinkCheck‑mini‑2.1 (改进版：使用自定义订阅后端)
+// NodeLinkCheck‑mini‑2.1 (改进版：支持自定义后端订阅数据，无论返回 JSON 或 JS代码)
 const a = 'NodeLinkCheck';
 const c = new Env(a);
 let d;
@@ -20,11 +20,31 @@ let g;
     // 从自定义后端获取订阅数据
     let subscriptionData;
     try {
-      // 注意：请确保此链接返回的是纯 JSON 数据！
-      const customBackendUrl = "http://subk.v5oo.eu.org/subscription.json";
+      // 修改为你的自定义订阅地址，注意这里建议返回的是纯 JS 文件
+      const customBackendUrl = "http://subk.v5oo.eu.org/subscription.js";
       const res = await c.http.get({ url: customBackendUrl });
       c.log("自定义后端返回原始数据", res.body);
-      subscriptionData = JSON.parse(res.body);
+      try {
+        // 尝试按 JSON 格式解析
+        subscriptionData = JSON.parse(res.body);
+      } catch (jsonErr) {
+        // 如果解析失败，则认为返回的是 JS 代码，采用 eval 执行
+        let subData;
+        // 定义 operator 函数，捕获订阅数组
+        function operator(a) {
+          subData = a;
+        }
+        // 执行返回的代码
+        eval(res.body);
+        // 将捕获的数组转换为对象，键为节点名
+        subscriptionData = {};
+        if (Array.isArray(subData)) {
+          subData.forEach(item => {
+            // 生成唯一名称，可根据需要调整
+            subscriptionData[item.name] = item;
+          });
+        }
+      }
       c.log("解析后的订阅数据", c.toStr(subscriptionData));
     } catch (error) {
       throw new Error("获取自定义后端订阅数据失败：" + error);
@@ -89,7 +109,6 @@ let g;
     const title = '代理链路检测';
     let message;
     if (g) {
-      // 针对 QuanX 环境的处理
       message = f; // 简化处理
     } else {
       message = f;
