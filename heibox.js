@@ -12,7 +12,7 @@
       // 拼接 query string
       if (params) {
         const query = Object.keys(params)
-          .map(key => `${key}=${encodeURIComponent(params[key])}`)
+          .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
           .join("&");
         url = url + "?" + query;
       }
@@ -20,7 +20,7 @@
         url: url,
         headers: headers
       };
-      $http.get(options, (error, response, data) => {
+      $httpClient.get(options, (error, response, data) => {
         if (error) {
           reject(error);
         } else {
