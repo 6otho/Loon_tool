@@ -21,8 +21,8 @@ DOMAIN-SUFFIX,ip.plus,DIRECT
 
 # 交互查询
 generic script-path=https://raw.githubusercontent.com/I-am-R-E/Functional-Store-Hub/Master/NodeLinkCheck/Script/NodeLinkCheck.js, timeout=300, tag=代理鏈檢測, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Final.png
-generic script-path=https://raw.githubusercontent.com/MCdasheng/Loon/main/Streaming/ChatGPT.js, timeout=10, tag=GPT解鎖查詢, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Siri.png
 generic script-path=https://raw.githubusercontent.com/huskydsb/Loon/main/Script/Scamalytic.js, timeout=10, tag=IP欺诈评分查詢, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Hijacking.png
+generic script-path=https://raw.githubusercontent.com/MCdasheng/Loon/main/Streaming/ChatGPT.js, timeout=10, tag=GPT解鎖查詢, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/ChatGPT.png
 generic script-path=https://raw.githubusercontent.com/MCdasheng/Loon/main/Streaming/Spotify.js, timeout=10, tag=Spotify解鎖查詢, img-url=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
 generic script-path=https://raw.githubusercontent.com/getsomecat/Loon/main/Net_Speedlite.js, timeout=10, tag=網絡速度查詢, img-url=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Speedtest.png
 generic script-path=https://raw.githubusercontent.com/Loon0x00/LoonScript/main/MediaCheck/check.js, timeout=300, tag=流媒體解鎖查詢, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/DomesticMedia.png
