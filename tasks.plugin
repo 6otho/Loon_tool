@@ -3,32 +3,44 @@
 #!author=你的名字
 #!icon=https://example.com/icon.png
 
-[Argument]
-CRON_ALIYUN   = input, "0 7,11,17 * * *", tag=阿里云盘签到 Cron,   desc=Cron 表达式，格式：分 时 日 月 周 :contentReference[oaicite:0]{index=0}
-CRON_KS       = input, "30 1,8,12,17 * * *", tag=快手果园 Cron,     desc=Cron 表达式，格式：分 时 日 月 周 :contentReference[oaicite:1]{index=1}
-CRON_MACAT    = input, "22 7 * * *",         tag=马克喵签到 Cron,   desc=Cron 表达式，格式：分 时 日 月 周 :contentReference[oaicite:2]{index=2}
-CRON_WEIBO    = input, "19 7 * * *",         tag=微博超话 Cron,     desc=Cron 表达式，格式：分 时 日 月 周 :contentReference[oaicite:3]{index=3}
-CRON_GAODE    = input, "1 0 * * *",          tag=高德地图签到 Cron, desc=Cron 表达式，格式：分 时 日 月 周 :contentReference[oaicite:4]{index=4}
+[Panel]
+# 定时任务的 Cron 表达式
+CRON_ALIYUN   = input, "0 7,11,17 * * *", tag="阿里云盘签到 Cron",    desc="Cron 表达式，格式：分 时 日 月 周"
+CRON_KS       = input, "30 1,8,12,17 * * *", tag="快手果园 Cron",      desc="Cron 表达式，格式：分 时 日 月 周"
+CRON_MACAT    = input, "22 7 * * *",         tag="马克喵签到 Cron",    desc="Cron 表达式，格式：分 时 日 月 周"
+CRON_WEIBO    = input, "19 7 * * *",         tag="微博超话 Cron",      desc="Cron 表达式，格式：分 时 日 月 周"
+CRON_GAODE    = input, "1 0 * * *",          tag="高德地图签到 Cron",  desc="Cron 表达式，格式：分 时 日 月 周"
 
-TIMEOUT       = input, "300",                tag=请求超时（秒）,    desc=脚本最大运行时长，单位秒
-ENABLE_ALIYUN = switch, true,               tag=启用 阿里云盘签到
-ENABLE_KS     = switch, false,              tag=启用 快手果园
-ENABLE_MACAT  = switch, false,              tag=启用 马克喵签到
-ENABLE_WEIBO  = switch, true,               tag=启用 微博超话
-ENABLE_GAODE  = switch, false,              tag=启用 高德地图打车签到
+# 超时和开关
+TIMEOUT       = input, "300",                tag="请求超时（秒）",      desc="脚本最大运行时长，单位秒"
+ENABLE_ALIYUN = switch, true,               tag="启用 阿里云盘签到"
+ENABLE_KS     = switch, false,              tag="启用 快手果园"
+ENABLE_MACAT  = switch, false,              tag="启用 马克喵签到"
+ENABLE_WEIBO  = switch, true,               tag="启用 微博超话"
+ENABLE_GAODE  = switch, false,              tag="启用 高德地图打车签到"
 
 [Script]
 # 阿里云盘签到
-cron {CRON_ALIYUN} script-path="https://gist.githubusercontent.com/Sliverkiss/33800a98dcd029ba09f8b6fc6f0f5162/raw/aliyun.js", timeout={TIMEOUT}, tag="阿里云盘签到", img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/AliYunDrive.png", enable={ENABLE_ALIYUN}
+cron "{CRON_ALIYUN}" script-path="https://gist.githubusercontent.com/Sliverkiss/33800a98dcd029ba09f8b6fc6f0f5162/raw/aliyun.js" \
+     timeout="{TIMEOUT}" tag="阿里云盘签到" img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/AliYunDrive.png" \
+     enable="{ENABLE_ALIYUN}"
 
 # 快手果园
-cron {CRON_KS} script-path="https://raw.githubusercontent.com/fmz200/wool_scripts/main/Scripts/kuaishou/ks_fruit.js", timeout={TIMEOUT}, tag="快手果园", img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/kuaishou.png", enable={ENABLE_KS}
+cron "{CRON_KS}" script-path="https://raw.githubusercontent.com/fmz200/wool_scripts/main/Scripts/kuaishou/ks_fruit.js" \
+     timeout="{TIMEOUT}" tag="快手果园" img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/kuaishou.png" \
+     enable="{ENABLE_KS}"
 
 # 马克喵签到
-cron {CRON_MACAT} script-path="https://raw.githubusercontent.com/fmz200/wool_scripts/main/Scripts/macat/macat_signin.js", timeout={TIMEOUT}, tag="马克喵签到", img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/Macat.png", enable={ENABLE_MACAT}
+cron "{CRON_MACAT}" script-path="https://raw.githubusercontent.com/fmz200/wool_scripts/main/Scripts/macat/macat_signin.js" \
+     timeout="{TIMEOUT}" tag="马克喵签到" img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/Macat.png" \
+     enable="{ENABLE_MACAT}"
 
 # 微博超话
-cron {CRON_WEIBO} script-path="https://raw.githubusercontent.com/toulanboy/scripts/master/weibo/weibotalk.js", timeout={TIMEOUT}, tag="微博超话", img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/WeiboTalk.png", enable={ENABLE_WEIBO}
+cron "{CRON_WEIBO}" script-path="https://raw.githubusercontent.com/toulanboy/scripts/master/weibo/weibotalk.js" \
+     timeout="{TIMEOUT}" tag="微博超话" img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/WeiboTalk.png" \
+     enable="{ENABLE_WEIBO}"
 
 # 高德地图打车签到
-cron {CRON_GAODE} script-path="https://raw.githubusercontent.com/wf021325/qx/master/task/ampDache.js", timeout={TIMEOUT}, tag="高德地图打车签到", img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/GaodeMap.jpg", enable={ENABLE_GAODE}
+cron "{CRON_GAODE}" script-path="https://raw.githubusercontent.com/wf021325/qx/master/task/ampDache.js" \
+     timeout="{TIMEOUT}" tag="高德地图打车签到" img-url="https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/apps/GaodeMap.jpg" \
+     enable="{ENABLE_GAODE}"
