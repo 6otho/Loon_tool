@@ -2,10 +2,9 @@
 # 脚本作者：@Ko
 # 使用声明：⚠️仅供参考，🈲转载与售卖！
 
-[Header Rewrite]
-# 格式：<正则> <Header-Name> <操作> <值>
-^https?:\/\/(raw|gist)\.githubusercontent\.com\/  Accept-Language  set  zh-Hant
-^https?:\/\/github\.com\/                       Accept-Language  set  zh-Hant
+[Rewrite]
+# 解决github速率限制返回429问题
+^https://.*\.githubusercontent\.com\/ header-replace Accept-Language en-us
 
 [MITM]
-hostname = raw.githubusercontent.com,gist.githubusercontent.com,github.com
+hostname = *.githubusercontent.com
