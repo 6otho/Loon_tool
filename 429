@@ -1,0 +1,9 @@
+# 项目名称：429zh-hant
+# 脚本作者：@Ko
+# 使用声明：⚠️仅供参考，🈲转载与售卖！
+
+[Script]
+^https:\/\/(raw|gist)\.githubusercontent\.com\/ header-replace Accept-Language zh-hant
+^https:\/\/github\.com\/ header-replace Accept-Language zh-hant
+[MITM]
+hostname = raw.githubusercontent.com,gist.githubusercontent.com,github.com
