@@ -2,8 +2,10 @@
 # 脚本作者：@Ko
 # 使用声明：⚠️仅供参考，🈲转载与售卖！
 
-[Script]
-header-replace ^https:\/\/(raw|gist)\.githubusercontent\.com\/ header-replace Accept-Language zh-hant
-header-replace ^https:\/\/github\.com\/ header-replace Accept-Language zh-hant
+[Header Rewrite]
+# 格式：<正则> <Header-Name> <操作> <值>
+^https?:\/\/(raw|gist)\.githubusercontent\.com\/  Accept-Language  set  zh-Hant
+^https?:\/\/github\.com\/                       Accept-Language  set  zh-Hant
+
 [MITM]
 hostname = raw.githubusercontent.com,gist.githubusercontent.com,github.com
