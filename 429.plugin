@@ -1,6 +1,7 @@
 #!name = 429zh-hant
 #!author = Ko[https://github.com/6otho]
-#!desc = ⚠️仅供参考，🈲转载与售卖！
+#!desc = 解决github速率限制返回429问题
+         ⚠️仅供参考，🈲转载与售卖！
 
 [Rewrite]
 # 解决github速率限制返回429问题
