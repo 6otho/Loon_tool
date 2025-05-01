@@ -4,7 +4,7 @@
 
 [Rewrite]
 # 解决github速率限制返回429问题
-^https://.*\.githubusercontent\.com\/ header-replace Accept-Language zh-hant
+^https://.*\.githubusercontent\.com\/ header-replace Accept-Language zh-Hant
 
 [MITM]
 hostname = *.githubusercontent.com
