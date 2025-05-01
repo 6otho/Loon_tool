@@ -4,7 +4,6 @@
 #!tag = ⚠️仅供参考，🈲转载与售卖！
 
 [Rewrite]
-# 解决github速率限制返回429问题
 ^https://.*\.githubusercontent\.com\/ header-replace Accept-Language zh-Hant
 
 [MITM]
