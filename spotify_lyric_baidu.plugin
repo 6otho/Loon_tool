@@ -3,9 +3,8 @@
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
 
 [Argument]
-spotify歌词翻译
-appid=请输入你的百度翻译appid
-securityKey=请输入你的百度翻译密钥
+appid=input,tag=百度appid,desc=此处填写百度appid
+securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 
 [Script]
 http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, requires-body=true, binary-body-mode=true, tag=spotify歌词翻译, argument=appid=%appid%&securityKey=%securityKey%
