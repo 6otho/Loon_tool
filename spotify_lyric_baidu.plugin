@@ -1,16 +1,38 @@
-#!name=Spotify歌词翻译
-#!desc=在插件配置页面填写百度API密钥解锁Spotify歌词翻译（需自行申请API权限）
+#!name=Spotify歌词翻译 (百度API版)
+#!desc=通过百度翻译API解锁Spotify歌词翻译 | 需申请百度API权限
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!author=6otho
 #!homepage=https://github.com/6otho
 #!loon_version=3.2+
 
 [Argument]
-appid=input,tag=应用ID,desc=此处填写百度API的应用ID
-securityKey=input,tag=安全密钥,desc=此处填写百度API的加密密钥
+appid=input,tag=应用ID,desc=百度翻译控制台获取的AppID（非小程序ID）
+secretKey=input,tag=API密钥,desc=百度翻译控制台获取的Secret Key（需保密）
 
 [Script]
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, argument=[appid={appid}&securityKey={securityKey}], requires-body=true, binary-body-mode=true, tag=Spotify歌词翻译
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, argument=[appid={appid}&secretKey={secretKey}], requires-body=true, binary-body-mode=true, tag=Spotify歌词翻译
 
 [MitM]
 hostname = spclient.wg.spotify.com
+
+### 技术说明（无需复制到配置文件） ###
+/*
+[签名机制]
+1. 百度API要求每次请求生成签名(sign)，生成公式：
+   sign = md5(appid + q + salt + secretKey)
+   - q：待翻译文本（需UTF8编码）
+   - salt：随机数（建议使用时间戳）
+
+[调试技巧]
+1. 在Loon调试模式查看实际请求参数：
+   console.log("Sign Params:" + appid +"|"+ salt +"|"+ secretKey)
+   
+2. 错误代码速查：
+   52003 - 密钥错误/服务未开通
+   54001 - 签名超时（检查salt是否为有效时间戳）
+   54004 - 账户余额不足
+
+[API配置要求]
+1. 在百度翻译控制台需配置IP白名单：0.0.0.0/0
+2. 开通「通用翻译」服务（默认免费版有2万字符/月限制）
+*/
