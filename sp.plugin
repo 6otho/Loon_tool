@@ -1,18 +1,16 @@
-#!name=Spotify 歌词翻译
-#!desc=通过百度翻译 API 实现 Spotify 非中文歌词汉化
+#!name=Spotify歌词翻译
+#!desc=通过百度翻译API实现歌词汉化
 #!author=6otho
 #!homepage=https://github.com/6otho
 #!loon_version=3.3+
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 
-[Panel]
-# 在这里输入你在百度翻译申请到的 App ID 和 Security Key
-appid = input;placeholder=百度翻译 App ID;required=true
-securityKey = input;placeholder=百度翻译 Security Key;required=true
+[Argument]
+appid = input,"百度翻译AppID",tag= 填写百度翻译开放平台的 AppID
+securityKey = input,"百度翻译密钥",tag= 填写百度翻译开放平台的密钥（Security Key）
 
 [Script]
-# 拦截歌词接口，调用本地脚本做翻译
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ requires-body=true,binary-body-mode=true,script-response-body=spotify_lyric.js,tag=Spotify 歌词翻译
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/你的GitHub用户名/你的仓库路径/spotify-lyric.js, requires-body=true, binary-body-mode=true, tag=Spotify歌词翻译
 
 [MITM]
 hostname = spclient.wg.spotify.com
