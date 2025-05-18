@@ -7,7 +7,7 @@
 
 [Argument]
 appid = input,"baiduid",tag= appid
-securityKey = input,"baidukey"tag= key 
+securityKey = input,"baidukey",tag= key 
 
 [Script]
 # 修改下方argument中的appid和securityKey,填入自己的appid和密钥
