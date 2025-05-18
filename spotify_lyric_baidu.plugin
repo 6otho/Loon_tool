@@ -3,6 +3,7 @@
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
 
 [Argument]
+spotify歌词翻译
 appid=请输入你的百度翻译appid
 securityKey=请输入你的百度翻译密钥
 
