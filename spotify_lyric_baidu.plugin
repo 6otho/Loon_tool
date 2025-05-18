@@ -1,13 +1,10 @@
 #!name=spotify-lyric
-#!desc=Spotify 歌词翻译（需百度翻译 API 参数）
+#!desc=spotify-lyric
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
 
-[Argument]
-appid=input,tag=百度appid,desc=此处填写百度appid
-securityKey=input,tag=百度密钥,desc=此处填写百度密钥
-
 [Script]
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/your-repo/master/js/spotify-lyric-debug.js, requires-body=true, binary-body-mode=true, tag=spotify歌词翻译,
+# 修改下方argument中的appid和securityKey,填入自己的appid和密钥
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, requires-body=true, binary-body-mode=true, tag=spotify歌词翻译, argument=appid=20250519002360540&securityKey=GoQhlskHzRsaNfM0qILV
 
 [MITM]
 hostname = spclient.wg.spotify.com
