@@ -2,9 +2,9 @@
 #!desc=Spotify 歌词翻译（Loon + 百度翻译 API）
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
 
-[Panel]
-appid = input, title="百度 AppID", placeholder="在此处填写你的百度翻译 AppID"
-securityKey = input, title="百度 安全密钥", placeholder="在此处填写你的百度翻译 Security Key"
+[Argument]
+appid=input,tag=百度appid,desc=此处填写百度appid
+securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 
 [Script]
 # 拦截歌词接口，注入本地 spotify.js
