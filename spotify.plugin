@@ -1,6 +1,9 @@
-#!name=spotify-lyric
-#!desc=Spotify 歌词翻译（Loon + 百度翻译 API）
-#!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
+#!name=Spotify歌词翻译
+#!desc=通过百度翻译API实现歌词汉化
+#!author=6otho
+#!homepage=https://github.com/6otho
+#!loon_version=3.3+
+#!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 
 [Argument]
 appid=input,tag=百度appid,desc=此处填写百度appid
