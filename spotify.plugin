@@ -1,13 +1,14 @@
 #!name=spotify-lyric
-#!desc=Spotify 歌词翻译（需百度翻译 API 参数）
+#!desc=Spotify 歌词翻译（Loon + 百度翻译 API）
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1187.png
 
-[Argument]
-appid=input,tag=百度appid,desc=此处填写百度appid
-securityKey=input,tag=百度密钥,desc=此处填写百度密钥
+[Panel]
+appid = input, title="百度 AppID", placeholder="在此处填写你的百度翻译 AppID"
+securityKey = input, title="百度 安全密钥", placeholder="在此处填写你的百度翻译 Security Key"
 
 [Script]
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, requires-body=true, binary-body-mode=true, tag=spotify歌词翻译, argument=appid=%appid%&securityKey=%securityKey%
+# 拦截歌词接口，注入本地 spotify.js
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/6otho/loon-tool/main/spotify.js, requires-body=true, binary-body-mode=true, timeout=10, argument=appid=%appid%&securityKey=%securityKey%
 
 [MITM]
 hostname = spclient.wg.spotify.com
