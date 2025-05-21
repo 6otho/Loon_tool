@@ -1,9 +1,0 @@
-#!name = 429zh-hant
-#!author = Ko[https://github.com/6otho]
-#!desc = 解决github速率限制返回429问问题 - ⚠️仅供参考，🈲转载与售卖！ 
-
-[Rewrite]
-^https://.*\.githubusercontent\.com\/ header-replace Accept-Language zh-Hant
-
-[MITM]
-hostname = *.githubusercontent.com
