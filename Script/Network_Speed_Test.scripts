@@ -1,11 +1,7 @@
 #!name=脚本工具合集
 #!desc=节点检测、地理位置、节点解锁、节点网速等查询。详细见脚本
 #!author=Ko整理
-#!homepage=https://github.com/fmz200/wool_scripts
-#!icon=https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/author/NaiSi_01.png
-#!raw-url=https://github.com/fmz200/wool_scripts/raw/main/Loon/script/tools.scripts
-#!tg-group=https://t.me/lanjieguanggao
-#!date=2024-10-21 19:00:00
+#!icon=https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/erdongchanyo/Speedtest.png
 #############################################
 [Rule]
 DOMAIN-SUFFIX,speedtest.cn,DIRECT
