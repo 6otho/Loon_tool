@@ -1,7 +1,7 @@
 #!name=脚本工具合集
 #!desc=节点检测、地理位置、节点解锁、节点网速等查询。详细见脚本
 #!author=Ko整理
-#!icon=https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/erdongchanyo/Speedtest.png
+#!icon=https://raw.githubusercontent.com/luestr/IconResource/main/Other_icon/120px/HTTPDNS.png
 #############################################
 [Rule]
 DOMAIN-SUFFIX,speedtest.cn,DIRECT
