@@ -6,6 +6,7 @@ title：标题（默认：网络测速）
 iconfast、iconmid、iconslow：测速快中慢时的图标
 colorlow、colormid、colorhigh：延迟低中高时的图标颜色
 mb：每次测试消耗的流量（默认5MB）
+notify：是否发送通知（默认关闭）
 */
 
 // ===================== 精简环境适配器 =====================
@@ -38,13 +39,9 @@ function Env(name) {
     }
   };
   
-  // 通知方法
+  // 通知方法 - 默认不调用
   this.msg = (title, subtitle, body) => {
-    if (this.isSurge() || this.isLoon() || this.isStash()) {
-      $notification.post(title, subtitle, body);
-    } else if (this.isQuanX()) {
-      $notify(title, subtitle, body);
-    }
+    // 默认不发送通知
   };
   
   // 日志方法
@@ -85,16 +82,16 @@ let color = '';
 
 !(async () => {
   if ($.isTile()) {
-    await notify('网络测速', '面板', '开始测速...');
+    console.log('网络测速开始...');
   }
   
-  // 默认使用5MB测试流量（用户可通过 &mb= 参数自定义）
+  // 默认使用5MB测试流量
   const mb = $.lodash_get(arg, 'mb') || 5;
   const bytes = mb * 1024 * 1024;
   
-  // 智能超时设置：基础5秒 + 每MB增加1秒（5MB => 10秒超时）
+  // 智能超时设置：基础5秒 + 每MB增加1秒
   const downloadTimeout = 5000 + mb * 1000;
-  console.log(`📊 测试数据量: ${mb}MB, 超时时间: ${downloadTimeout / 1000}秒`);
+  console.log(`测试数据量: ${mb}MB, 超时时间: ${downloadTimeout / 1000}秒`);
   
   try {
     let start = Date.now();
@@ -116,8 +113,8 @@ let color = '';
     });
     
     const pingt = Date.now() - pingstart;
-    console.log(`⏱️ 延迟时间: ${pingt}ms`);
-    console.log(`⏱️ 下载耗时: ${duration.toFixed(2)}s`);
+    console.log(`延迟时间: ${pingt}ms`);
+    console.log(`下载耗时: ${duration.toFixed(2)}s`);
     
     // 计算速率和延迟对应的图标和颜色
     const a = Diydecide(0, 50, 100, Math.round(speed * 8));
@@ -134,8 +131,8 @@ let color = '';
     
     icon = shifts[a];
     color = shifts[b];
-    console.log(`🎯 图标: ${shifts[a]}`);
-    console.log(`🎨 颜色: ${shifts[b]}`);
+    console.log(`图标: ${shifts[a]}`);
+    console.log(`颜色: ${shifts[b]}`);
     
     // 标题默认为中文"网络测速"
     title = arg?.title || "网络测速";
@@ -147,20 +144,13 @@ let color = '';
     content = `节点：${$environment.params.nodeInfo.name}\n`;
     content += `下行速率：${downloadMbps} Mbps (${downloadMBs} MB/s)\n`;
     content += `测试耗时：${duration.toFixed(2)}秒\n`;
-    content += `网络延迟：${pingt} ms\n`;
-    content += `测试时间：${new Date().toTimeString().split(' ')[0]}`;
+    content += `网络延迟：${pingt} ms`;
     
-    if ($.isTile()) {
-      await notify('网络测速', '面板', '测速完成');
-    } else if (!$.isPanel()) {
-      await notify('网络测速', title, content);
-    }
+    console.log('✅ 测速成功');
   } catch (e) {
-    $.logErr(e);
-    const msg = `${e.message || e.error || e}`;
+    console.error('❌ 测速失败:', e);
     title = `❌ 测速失败`;
-    content = `原因: ${msg}\n请检查网络或节点状态`;
-    await notify('网络测速', title, content);
+    content = `原因: ${e.message || e.error || e}\n请检查网络或节点状态`;
   }
 })()
 .finally(async () => {
@@ -173,16 +163,9 @@ let color = '';
     ...arg 
   };
   
-  $.log(JSON.stringify(result, null, 2));
+  console.log('测速结果:', JSON.stringify(result, null, 2));
   $.done(result);
 });
-
-// 通知函数
-async function notify(title, subt, desc, opts) {
-  if ($.lodash_get(arg, 'notify') !== 'false') {
-    $.msg(title, subt, desc, opts);
-  }
-}
 
 // 确定变量所在区间
 function Diydecide(x, y, z, item) {
