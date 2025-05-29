@@ -70,7 +70,7 @@ let color = ''
   icon = shifts[a]
   color = shifts[b]
 
-  title = 'NetSpeed'
+  title = '网络测速'
   content = `节点名称：${$environment.params.nodeInfo.name}
 下行速率：${speedMbps.toFixed(2)} Mbps [${(speedMbps/8).toFixed(2)} MB/s]
 测试耗时：${duration.toFixed(2)} s
