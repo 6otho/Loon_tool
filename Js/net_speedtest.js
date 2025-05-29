@@ -3,13 +3,13 @@
 整点花里胡哨
 各种花里胡哨参数，通过 argument 传入，用 = 连接 key 及相应 value，用 & 链接各种 key，可以任意选择想填入的参数
 
-title：标题
+title：标题（示例：title=网络测速）
 iconfast、iconmid、iconslow 分别对应测速快中慢时的图标
 colorlow、colormid、colorhigh 分别对应延迟低中高时的图标颜色
 mb 参数：每次测试消耗的流量，默认 10MB，可通过 &mb= 数值覆盖
 配置实例：title=花里胡哨才是生产力&iconfast=bird&iconmid=hare&iconslow=tortoise&colorlow=#06D6A0&colormid=#FFD166&colorhigh=#EF476F
 
-⚠️ 不想变化多端？？
+⚠️ 不想花里胡哨？？
 可直接使用最基本的 panel 参数，title、icon、icon-color
 配置实例：title=不想花里胡哨了&icon=hare&icon-color=#CDCDCD
 */
@@ -70,9 +70,9 @@ let color = ''
   icon = shifts[a]
   color = shifts[b]
 
-  title = '网络测速'
+  title = arg.title || '网络测速'
   content = `节点名称：${$environment.params.nodeInfo.name}
-下行速率：${speedMbps.toFixed(2)} Mbps [${(speedMbps/8).toFixed(2)} MB/s]
+下行速率：${speedMbps.toFixed(2)} Mbps [${(speedMbps / 8).toFixed(2)} MB/s]
 测试耗时：${duration.toFixed(2)} s
 网络延迟：${pingTime} ms
 执行时间：${new Date().toTimeString().split(' ')[0]}`
