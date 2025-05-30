@@ -1,5 +1,5 @@
-#!name=Spotify移除创建按钮
-#!desc=移除Spotify右下角的"创建"按钮
+#!name=Spotify移除创建按钮 (调试版)
+#!desc=移除Spotify右下角的"创建"按钮 - 调试版本
 #!author=6otho
 #!icon=https://github.com/Toperlock/Quantumult/raw/main/icon/Naruto/Naruto-1001.png
 #!openUrl=https://apps.apple.com/app/id324684580
@@ -9,8 +9,13 @@
 #!date=2025-05-30
 
 [Script]
-# 仅处理创建按钮移除
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)$ script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_remove_create_button.js, requires-body=true, binary-body-mode=true, timeout=10, tag=Spotify移除创建按钮
+# 仅处理创建按钮移除 - 调试版本
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/(bootstrap\/v1\/bootstrap|user-customization-service\/v1\/customize)$ 
+script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_remove_create_button_debug.js, 
+requires-body=true, 
+binary-body-mode=true, 
+timeout=20, 
+tag=Spotify移除创建按钮(调试)
 
 [MITM]
 hostname = spclient.wg.spotify.com
