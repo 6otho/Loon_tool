@@ -1,0 +1,24 @@
+#!name=Spotify歌词翻译 + 保留原广告拦截
+#!desc=去掉 QUIC 冲突，确保歌词翻译脚本可用
+#!author=6otho 改造
+
+[Argument]
+appid=input,tag=百度appid,desc=此处填写百度appid
+securityKey=input,tag=百度密钥,desc=此处填写百度密钥
+
+[Rule]
+# ↓ 删掉原来这行：AND,((DOMAIN, spclient.wg.spotify.com),(PROTOCOL,QUIC)),REJECT
+# 改成全局 DROP QUIC，让 Spotify 自动降级到 HTTP/2
+PROTOCOL,QUIC,DROP
+
+# ↓ 在这里保留你原本的所有广告拦截规则，比如：
+# DOMAIN-SUFFIX,ads.spotify.com,REJECT
+# DOMAIN-KEYWORD,some-ad-domain,REJECT
+# ……（你自己已有的那些，直接留在这里即可）……
+
+[Script]
+# 拦截歌词接口，注入翻译脚本
+http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/spotify.js, requires-body=true, binary-body-mode=true, timeout=10, argument=[{appid},{securityKey}]
+
+[MITM]
+hostname = spclient.wg.spotify.com
