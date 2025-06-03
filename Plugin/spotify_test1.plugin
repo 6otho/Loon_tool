@@ -1,5 +1,5 @@
-#!name=Spotify歌词翻译
-#!desc=通过百度翻译API实现歌词汉化，修复新版歌词域名无法触发问题
+#!name=Spotify歌词翻译（增强通配）
+#!desc=通过百度翻译API实现歌词汉化，修复新版歌词域名无法触发问题，支持更多 Spotify 子域名
 #!author=6otho[https://github.com/6otho]
 #!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
@@ -13,7 +13,7 @@ securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-http-response ^https:\/\/(spclient\.wg\.spotify\.com|gae2-spclient\.spotify\.com)(:443)?\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/spotify.js, requires-body=true, binary-body-mode=true, timeout=10, argument=[{appid},{securityKey}]
+http-response ^https:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/ requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/spotify.js, argument=[{appid},{securityKey}]
 
 [MITM]
-hostname=spclient.wg.spotify.com, gae2-spclient.spotify.com
+hostname=api.spotify.com, *.spotify.com
