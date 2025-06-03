@@ -1,7 +1,7 @@
 #!name=Spotify歌词翻译
-#!desc=通过百度翻译API实现歌词汉化
-#!author= 6otho[https://github.com/6otho]
-#!homepage= https://t.me/PaKo_Ov_Chan
+#!desc=通过百度翻译API实现歌词汉化，修复新版歌词域名无法触发问题
+#!author=6otho[https://github.com/6otho]
+#!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
@@ -9,10 +9,11 @@
 appid=input,tag=百度appid,desc=此处填写百度appid
 securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 
+[Rule]
+AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
+
 [Script]
-# 拦截歌词接口，注入本地 spotify.js
-http-response ^https:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/spotify.js, requires-body=true, binary-body-mode=true, timeout=10, argument=[{appid},{securityKey}]
+http-response ^https:\/\/(spclient\.wg\.spotify\.com|gae2-spclient\.spotify\.com)(:443)?\/color-lyrics\/v2\/track\/ script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/spotify.js, requires-body=true, binary-body-mode=true, timeout=10, argument=[{appid},{securityKey}]
 
 [MITM]
-hostname = spclient.wg.spotify.com
-
+hostname=spclient.wg.spotify.com, gae2-spclient.spotify.com
