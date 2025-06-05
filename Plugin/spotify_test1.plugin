@@ -1,22 +1,21 @@
-#!name=Spotify歌词翻译（百度API·双阶段处理）
-#!desc=仅拦截“外部翻译”接口，保留原文（英文）歌词，再注入中文译文
-#!author=6otho + PaKo
+#!name=Spotify歌词翻译（百度API·最终版）
+#!desc=仅拦截“外部翻译”接口，用百度API翻译，不破坏原文歌词
+#!author=6otho [https://github.com/6otho]
 #!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
 [Argument]
-appid=input,tag=百度 AppID,desc=在此填写你的百度翻译 AppID
-securityKey=input,tag=百度 密钥,desc=在此填写你的百度翻译密钥
+appid=input,tag=百度 AppID,desc=此处填写百度翻译的 AppID
+securityKey=input,tag=百度 密钥,desc=此处填写百度翻译的密钥
 
 [Rule]
+# 不要改动，确保 QUIC 流量被拒绝，转用 HTTP 拦截
 AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-# 1. 拦截所有 color-lyrics 请求，把请求上下文传给脚本（不改动响应）
-http-request ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.* requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.请求
-
-# 2. 仅拦截“外部翻译”接口（subtype=External），由脚本在这里做翻译并合并原文+译文
+# —— 仅拦截“外部翻译（subtype=External）”接口 ——  
+# 不拦截原文歌词接口，保证英文原文能正常显示
 http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.*subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.翻译
 
 [MITM]
