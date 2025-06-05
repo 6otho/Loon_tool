@@ -1,19 +1,23 @@
-#!name=Spotify歌词翻译
-#!desc=通过百度翻译API实现歌词汉化，修复新版歌词翻译域名无法触发问题
-#!author=6otho [https://github.com/6otho]
+#!name=Spotify歌词翻译（百度API·双阶段处理）
+#!desc=仅拦截“外部翻译”接口，保留原文（英文）歌词，再注入中文译文
+#!author=6otho + PaKo
 #!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
 [Argument]
-appid=input,tag=百度appid,desc=此处填写百度appid
-securityKey=input,tag=百度密钥,desc=此处填写百度密钥
+appid=input,tag=百度 AppID,desc=在此填写你的百度翻译 AppID
+securityKey=input,tag=百度 密钥,desc=在此填写你的百度翻译密钥
 
 [Rule]
 AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/ requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}]
+# 1. 拦截所有 color-lyrics 请求，把请求上下文传给脚本（不改动响应）
+http-request ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.* requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.请求
+
+# 2. 仅拦截“外部翻译”接口（subtype=External），由脚本在这里做翻译并合并原文+译文
+http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.*subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.翻译
 
 [MITM]
-hostname=api.spotify.com, *.spotify.com
+hostname = api.spotify.com, *.spotify.com
