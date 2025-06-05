@@ -1,16 +1,39 @@
-#!name=Spotify歌词翻译（百度API）
-#!desc=处理 subtype=External 歌词接口，不破坏原始歌词结构
-#!author=6otho + 修正 by ChatGPT
+#!name=Spotify 歌词翻译（百度API·DualSubs 风格）
+#!desc=仿 DualSubs 结构，仅调用百度翻译脚本，确保原文歌词不被破坏
+#!author=6otho + PaKo
+#!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
 [Argument]
-appid=input,tag=百度appid,desc=此处填写百度翻译 AppID
-securityKey=input,tag=百度密钥,desc=此处填写百度翻译密钥
+appid=input,tag=百度 AppID,desc=此处填写你的百度翻译 AppID
+securityKey=input,tag=百度 密钥,desc=此处填写你的百度翻译密钥
+
+[Rule]
+# 这一条保持不变，拦截 Spotify 的流量
+AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-# ✅ 仅拦截带 subtype=External 的请求，避免干扰原始歌词
-http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.*subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify歌词翻译修正版
+# ————————————————————————————————————————————————————————————————————————
+# 1. 请求阶段：把所有歌词请求的“上下文”标记一下（DualSubs 是这样做的）。
+#    这样你的后置脚本能知道该条歌词请求来自哪首歌、是否需要翻译等。
+#    URL 例子：https://gae2-spclient.spotify.com/color-lyrics/v2/track/XXXX?clientLanguage=zh
+# ————————————————————————————————————————————————————————————————————————
+http-request ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?(.*) requires-body=true, binary-body-mode=true, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.请求
+
+# ————————————————————————————————————————————————————————————————————————
+# 2. 响应阶段（“原文歌词”部分）：**不要拦截**。DualSubs 原版是把 Translate/External 分开处理，
+#    原文那条 URL 的响应它不动，Spotify 客户端就能正常显示原文歌词。
+#    所以我们这里**不写**一条“拦截不带 subtype 的响应”。
+# ————————————————————————————————————————————————————————————————————————
+
+# ————————————————————————————————————————————————————————————————————————
+# 3. 响应阶段（“翻译接口”部分）：只针对带上 subtype=External 的请求，再调用百度翻译：
+#    这样就不会干扰到原文歌词，只有翻译接口触发时才会动数据。
+#    URL 例子：
+#      https://gae2-spclient.spotify.com/color-lyrics/v2/track/XXXX?clientLanguage=zh&subtype=External
+# ————————————————————————————————————————————————————————————————————————
+http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?(.*)subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify.歌词.翻译
 
 [MITM]
-hostname = *.spotify.com
+hostname = api.spotify.com, *.spotify.com
