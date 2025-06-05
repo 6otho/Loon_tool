@@ -1,17 +1,16 @@
-#!name=Spotify歌词翻译（百度API专用）
-#!desc=只处理翻译接口，不修改原始歌词内容，修复歌词不显示问题
-#!author=6otho (调整: ChatGPT @ PaKo)
-#!homepage=https://t.me/PaKo_Ov_Chan
+#!name=Spotify歌词翻译（百度API）
+#!desc=处理 subtype=External 歌词接口，不破坏原始歌词结构
+#!author=6otho + 修正 by ChatGPT
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
 [Argument]
-appid=input,tag=百度appid,desc=此处填写百度翻译的 AppID
-securityKey=input,tag=百度密钥,desc=此处填写百度翻译的密钥
+appid=input,tag=百度appid,desc=此处填写百度翻译 AppID
+securityKey=input,tag=百度密钥,desc=此处填写百度翻译密钥
 
 [Script]
-# ✅ 只拦截 subtype=External 的歌词翻译接口（防止破坏原始歌词）
-http-response ^https:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?(.*)subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify歌词翻译
+# ✅ 仅拦截带 subtype=External 的请求，避免干扰原始歌词
+http-response ^https?:\/\/.+\.spotify\.com(:443)?\/color-lyrics\/v2\/track\/\w+\?.*subtype=External requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics, argument=[{appid},{securityKey}], tag=Spotify歌词翻译修正版
 
 [MITM]
 hostname = *.spotify.com
