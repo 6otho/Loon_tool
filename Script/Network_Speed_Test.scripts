@@ -19,7 +19,7 @@ DOMAIN-SUFFIX,ip.plus,DIRECT
 # 交互查询
 generic script-path=https://raw.githubusercontent.com/I-am-R-E/Functional-Store-Hub/Master/NodeLinkCheck/Script/NodeLinkCheck.js, timeout=300, tag=代理鏈檢測, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/pokeball.png
 generic script-path=https://raw.githubusercontent.com/xream/scripts/main/surge/modules/network-info/net-lsp-x.js, timeout=120, tag=節點入口查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/in.png
-generic script-path=https://raw.githubusercontent.com/dcpengx/Loon/refs/heads/main/JavaScript/Streamingcheck.js, timeout=300, tag=流媒體解鎖查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/youtube.png
+generic script-path=https://raw.githubusercontent.com/dcpengx/Loon/refs/heads/main/JavaScript/Streamingcheck.js, timeout=20, tag=流媒體解鎖查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/youtube.png
 generic script-path=https://raw.githubusercontent.com/huskydsb/Loon/main/Script/Scamalytic.js, timeout=10, tag=IP欺诈评分查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute1/1814339.png
 generic script-path=https://github.com/Keywos/rule/raw/main/loon/ipapi2.js, timeout=10, tag=節點地址查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute1/1249982.png
 generic script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/net_speedtest.js, timeout=10, tag=網絡速度查詢, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute1/1643998.png
