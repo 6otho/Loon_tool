@@ -1,22 +1,22 @@
-#!name=Spotify歌词翻译（百度API·最终版）
-#!desc=仅拦截“外部翻译”接口，用百度API翻译，不破坏原文歌词
+#!name=Spotify歌词翻译
+#!desc=通过百度翻译 API 实现歌词汉化，修复新版歌词翻译域名无法触发问题
 #!author=6otho [https://github.com/6otho]
 #!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 
 [Argument]
-appid = input, tag = 百度 AppID, desc = 此处填写百度翻译的 AppID
-securityKey = input, tag = 百度 密钥, desc = 此处填写百度翻译的密钥
+appid = input, tag = 百度appid, desc = 此处填写百度appid
+securityKey = input, tag = 百度密钥, desc = 此处填写百度密钥
 
 [Rule]
-# 确保 QUIC 流量被拒绝，转用 HTTP 拦截
-AND, ((DOMAIN-SUFFIX, spotify.com), (PROTOCOL, QUIC)), REJECT
+# 拒绝 QUIC，强制走 TCP（可替换为 DOMAIN-SUFFIX 或 DOMAIN-REGEX）
+AND, ((DOMAIN-SUFFIX, spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-# —— 仅拦截 spclient.wg.spotify.com 的纯原文歌词接口（不含 subtype=External），用本地脚本替换 ——  
-http-response ^https?:\/\/spclient\.wg\.spotify\.com\/color-lyrics\/v2\/track\/\w+(?!.*subtype=External) url script-response-body=https://raw.githubusercontent.com/xiaomaoJT/QxScript/main/rewrite/boxJS/source/sp.js, requires-body=true, binary-body-mode=true, timeout=10, tag=Spotify.歌词.本地
+# 拦截 color-lyrics v2 track 请求
+http-response ^https://[^/]+\.spotify\.com(:443)?/color-lyrics/v2/track/ requires-body=true, binary-body-mode=true, timeout=10, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/Spotify_lyrics.js, argument=[{appid},{securityKey}]
 
 [MITM]
-# 同时对 api.spotify.com 及 spclient.wg.spotify.com 开启 HTTPS 解密
-hostname = api.spotify.com, *.spotify.com, spclient.wg.spotify.com
+# 建议使用通配符
+hostname = *.spotify.com
