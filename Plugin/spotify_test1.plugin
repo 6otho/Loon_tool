@@ -7,8 +7,8 @@
 #!loon_version=3.3+
 
 [Argument]
-appid        = input, tag = 百度appid, desc = 此处填写百度appid
-securityKey  = input, tag = 百度密钥, desc = 此处填写百度密钥
+appid=input,tag=百度appid,desc=此处填写百度appid
+securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 
 [Rule]
 AND, ((DOMAIN, spclient.wg.spotify.com), (PROTOCOL, QUIC)), REJECT
