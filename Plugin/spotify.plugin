@@ -2,7 +2,7 @@
 #!desc=通过百度翻译API实现歌词汉化，修复新版歌词翻译域名无法触发问题,加了域名逻辑适配.
 #!author=6otho[https://github.com/6otho]
 #!homepage=https://t.me/PaKo_Ov_Chan
-#!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
+#!icon=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
 #!loon_version=3.3+
 #!date=2025-06-22 00:00:00
 
