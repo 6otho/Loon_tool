@@ -5,6 +5,7 @@
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
 #!loon_version=3.3+
 #!date=2025-06-11 00:00:00
+#!update-url=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics
 
 [Argument]
 appid=input,tag=百度appid,desc=此处填写百度appid
