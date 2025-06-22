@@ -7,14 +7,17 @@
 
 [Argument]
 appid=input,tag=百度 AppID,desc=此处填写百度翻译 AppID
-securityKey=input,tag=百度密钥,desc=此处填写翻译密钥
+securityKey=input,tag=百度密钥,desc=此处填写百度翻译密钥
 
 [Rule]
 DOMAIN-SUFFIX,spotify.com,PROXY
-FINAL,DIRECT
+FINAL,PROXY  # 或者 DIRECT／REJECT，取决于你的全局策略
 
 [Script]
-http-response ^https://[^/]+\.spotify\.com(?::443)?/color-lyrics/.*/track/.* requires-body=true,binary-body-mode=true,timeout=10,script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js,argument=[{appid},{securityKey}]
+http-response ^https://[^/]+\.spotify\.com(?::443)?/color-lyrics/.*/track/.* \
+    requires-body=true,binary-body-mode=true,timeout=10, \
+    script-path=https://raw.githubusercontent.com/app2smile/rules/master/js/spotify-lyric.js, \
+    argument=appid={appid}&securityKey={securityKey},tag=Spotify歌词翻译
 
 [MITM]
 hostname = *.spotify.com
