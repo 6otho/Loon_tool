@@ -1,5 +1,5 @@
 #!name=Spotify歌词翻译
-#!desc=通过百度翻译 API 实现歌词汉化，新增域名逻辑
+#!desc=通过百度翻译 API 实现歌词汉化，新增域名逻辑test1
 #!author=6otho [https://github.com/6otho]
 #!homepage=https://t.me/PaKo_Ov_Chan
 #!icon=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute/spotify.png
@@ -10,12 +10,13 @@ appid=input,tag=百度appid,desc=此处填写百度appid
 securityKey=input,tag=百度密钥,desc=此处填写百度密钥
 
 [Rule]
-AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, QUIC)), REJECT
-AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
-AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
+# 不再专门 REJECT QUIC，交给脚本统一处理
+AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, HTTPS)), PROXY
+AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, HTTPS)), PROXY
+AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, HTTPS)), PROXY
 
 [Script]
-http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=10,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics,argument=[{appid},{securityKey}]
+http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/.* requires-body=true,binary-body-mode=true,timeout=10,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js,argument=[{appid},{securityKey}]
 
 [MITM]
 hostname = spclient.wg.spotify.com, gae2-spclient.spotify.com, guc3-spclient.spotify.com
