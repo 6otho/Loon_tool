@@ -14,7 +14,7 @@
 
 [Script]
 # 响应体脚本修改页面内容
-http-response ^https?:\/\/(?:www\.)?hl(?:wxx|cx\d*)\.com\/(?:$|\?|archives\/|category\/|memora|search|index\.htm) script-path=https://raw.githubusercontent.com/ZenmoFeiShi/Qx/refs/heads/main/hlwxx_remove_ads.js, requires-body=true, timeout=30, tag=黑料不打烊净化
+http-response ^https?:\/\/(?:www\.)?hl(?:wxx|cx\d*)\.com\/(?:$|\?|archives\/|category\/|memora|search|index\.htm) script-path=https://raw.githubusercontent.com/6otho/Heiliaowang-ads/refs/heads/main/hlw_remove_ads.js, requires-body=true, timeout=30, tag=黑料不打烊净化
 
 [MitM]
 hostname = *.hlwxx.com, *.hlcx16.com, stats.kwvprfcr.xyz, mc.yandex.ru, hlwxx.com
