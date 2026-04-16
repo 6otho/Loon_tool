@@ -1,0 +1,20 @@
+#!name=黑料不打烊净化
+#!desc=黑料不打烊网页去广告净化
+#!author=怎么肥事
+#!date=2026-04-14
+
+[Rewrite]
+# 拦截广告与数据统计域名
+^https?:\/\/stats\.kwvprfcr\.xyz reject
+^https?:\/\/mc\.yandex\.ru reject
+
+# 修改请求头，防止服务器返回压缩数据导致脚本无法修改 body 
+# (注：Loon 自身其实具备自动解压功能，保留此条为了与原规则逻辑保持绝对一致)
+^https?:\/\/(?:www\.)?hl(?:wxx|cx\d*)\.com\/(?:$|\?|archives\/|category\/|memora|search|index\.htm) header-replace Accept-Encoding identity
+
+[Script]
+# 响应体脚本修改页面内容
+http-response ^https?:\/\/(?:www\.)?hl(?:wxx|cx\d*)\.com\/(?:$|\?|archives\/|category\/|memora|search|index\.htm) script-path=https://raw.githubusercontent.com/ZenmoFeiShi/Qx/refs/heads/main/hlwxx_remove_ads.js, requires-body=true, timeout=30, tag=黑料不打烊净化
+
+[MitM]
+hostname = *.hlwxx.com, *.hlcx16.com, stats.kwvprfcr.xyz, mc.yandex.ru, hlwxx.com
