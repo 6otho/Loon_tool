@@ -43,7 +43,7 @@ async function run() {
 
     const localRegionEn = getRegionEn(localNetZh?.regionName, localNetEn?.regionName);
 
-    // 请求省内与核心城市探针数据
+    // 请求省内与核心城市探针数据 (已彻底重构为防连坐并发模式)
     const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
 
     render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol, localRegionEn);
@@ -84,7 +84,7 @@ function testNativeProxy(targetNodeName) {
   });
 }
 
-// === 2. 极限榨取省内三大运营商机器 (严格遵守 API 10 个 locations 限制) ===
+// === 2. 并发防连坐探针抓取 (彻底解决 422 报错导致全军覆没的问题) ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -94,64 +94,78 @@ async function runProvinceCheck(info, localRegion, isUdp) {
     target = target.slice(1, -1);
   }
 
-  // 🔥 地毯式城市列表扩充（特别是针对广东隐藏的联通/移动节点）
   const cityMap = {
-    "Guangdong": ["Shenzhen", "Guangzhou", "Dongguan", "Foshan", "Zhuhai", "Zhongshan", "Jiangmen", "Shantou", "Huizhou", "Zhanjiang"],
-    "Guangxi": ["Nanning", "Liuzhou", "Guilin", "Beihai", "Yulin"],
-    "Fujian": ["Fuzhou", "Xiamen", "Quanzhou", "Putian", "Zhangzhou"],
-    "Zhejiang": ["Hangzhou", "Ningbo", "Wenzhou", "Jinhua", "Shaoxing", "Jiaxing", "Taizhou"],
-    "Jiangsu": ["Nanjing", "Suzhou", "Wuxi", "Changzhou", "Xuzhou", "Nantong", "Zhenjiang"],
-    "Shandong": ["Jinan", "Qingdao", "Yantai", "Weifang", "Linyi"],
-    "Sichuan": ["Chengdu", "Mianyang", "Deyang", "Nanchong"],
-    "Hubei": ["Wuhan", "Yichang", "Xiangyang", "Jingzhou"],
-    "Hunan": ["Changsha", "Zhuzhou", "Xiangtan", "Hengyang"],
-    "Henan": ["Zhengzhou", "Luoyang", "Nanyang", "Xinxiang"],
-    "Hebei": ["Shijiazhuang", "Baoding", "Tangshan", "Langfang"],
-    "Liaoning": ["Shenyang", "Dalian", "Anshan"],
-    "Anhui": ["Hefei", "Wuhu", "Bengbu", "Fuyang"],
-    "Jiangxi": ["Nanchang", "Ganzhou", "Jiujiang", "Yichun"],
-    "Shaanxi": ["Xi'an", "Xianyang", "Baoji"],
+    "Guangdong": ["Shenzhen", "Guangzhou", "Dongguan", "Foshan", "Zhuhai"],
+    "Guangxi": ["Nanning", "Liuzhou"],
+    "Fujian": ["Fuzhou", "Xiamen", "Quanzhou"],
+    "Zhejiang": ["Hangzhou", "Ningbo", "Wenzhou"],
+    "Jiangsu": ["Nanjing", "Suzhou", "Wuxi"],
+    "Shandong": ["Jinan", "Qingdao"],
+    "Sichuan": ["Chengdu", "Mianyang"],
+    "Hubei": ["Wuhan", "Yichang"],
+    "Hunan": ["Changsha", "Zhuzhou"],
+    "Henan": ["Zhengzhou", "Luoyang"],
+    "Hebei": ["Shijiazhuang", "Baoding"],
+    "Liaoning": ["Shenyang", "Dalian"],
+    "Anhui": ["Hefei", "Wuhu"],
+    "Jiangxi": ["Nanchang", "Ganzhou"],
+    "Shaanxi": ["Xi'an", "Xianyang"],
     "Chongqing": ["Chongqing"],
     "Beijing": ["Beijing"],
     "Shanghai": ["Shanghai"],
     "Tianjin": ["Tianjin"]
   };
 
-  const locations = [];
+  // 构造 5 个完全独立的请求条件
+  const independentQueries = [];
   
-  // 1. 强力指令：强制要求 API 剥离出本省的联通和移动机器 (权重最高)
-  locations.push({ "magic": `China Unicom ${localRegion}`, "limit": 1 });
-  locations.push({ "magic": `China Mobile ${localRegion}`, "limit": 1 });
-  locations.push({ "magic": `China Telecom ${localRegion}`, "limit": 1 });
+  // 1. 全省盲扫保底 (拿电信)
+  independentQueries.push([{ "magic": localRegion, "limit": 3 }]);
+  // 2. 单独死磕本省联通 (AS4837)
+  independentQueries.push([{ "magic": localRegion, "asn": 4837, "limit": 2 }]);
+  // 3. 单独死磕本省移动 (AS9808)
+  independentQueries.push([{ "magic": localRegion, "asn": 9808, "limit": 2 }]);
   
-  // 2. 基础指令：本省通用查询兜底
-  locations.push({ "magic": localRegion, "limit": 2 });
-
-  // 3. 城市扫街：剩余配额分配给该省的核心城市（严格控制总 length = 10）
+  // 4 & 5. 单独死磕本省前两大城市 (如深圳、广州，解决城市名没填省份的问题)
   const cities = cityMap[localRegion] || [];
-  cities.slice(0, 5).forEach(city => {
-    locations.push({ "magic": city, "limit": 1 });
+  if (cities[0]) independentQueries.push([{ "magic": cities[0], "limit": 2 }]);
+  if (cities[1]) independentQueries.push([{ "magic": cities[1], "limit": 2 }]);
+
+  // 并发发送这 5 个请求！某一个 422 报错绝不影响其他的成功返回！
+  const tasks = independentQueries.map(async (locArray) => {
+    const body = {
+      target: target,
+      type: "ping",
+      locations: locArray,
+      measurementOptions: { packets: 3 }
+    };
+    if (!isUdp) {
+      body.measurementOptions.protocol = "tcp";
+      body.measurementOptions.port = port;
+    }
+
+    try {
+      const submission = await requestJson(GLOBALPING_API, "DIRECT", "POST", body);
+      if (submission?.id) {
+        return await pollGlobalpingResult(submission.id);
+      }
+    } catch (e) {
+      // 默默吃掉 422 错误，保证其他成功的请求不受牵连
+      return null;
+    }
   });
 
-  const body = {
-    target: target,
-    type: "ping",
-    locations: locations, // 刚好 10 个 location 限制，不会触发 400 报错
-    measurementOptions: { packets: 3 }
-  };
+  const results = await Promise.all(tasks);
+  
+  // 汇总所有成功返回的探针数据
+  const mergedResult = { results: [] };
+  results.forEach(res => {
+    if (res && Array.isArray(res.results)) {
+      mergedResult.results.push(...res.results);
+    }
+  });
 
-  if (!isUdp) {
-    body.measurementOptions.protocol = "tcp";
-    body.measurementOptions.port = port;
-  }
-
-  try {
-    const submission = await requestJson(GLOBALPING_API, "DIRECT", "POST", body);
-    if (!submission?.id) return null;
-    return await pollGlobalpingResult(submission.id);
-  } catch (e) {
-    return null;
-  }
+  return mergedResult;
 }
 
 function getRegionEn(zhRegion, enRegion) {
@@ -201,7 +215,7 @@ async function pollGlobalpingResult(id) {
   const url = `${GLOBALPING_API}/${id}`;
   let attempts = 0;
   while (attempts < 5) {
-    await wait(2000);
+    await wait(1800); // 缩短等待间隙，提升并发收集速度
     const res = await requestJson(url, "DIRECT");
     if (res && res.status !== "in_progress") return res;
     attempts++;
@@ -247,7 +261,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     cm: { name: "移动", status: "🚫 平台暂无本省【移动】机器" }
   };
 
-  // 整理并提取探针数据
+  // 整理并提取汇总后的探针数据
   if (testResult && Array.isArray(testResult.results)) {
     testResult.results.forEach((item) => {
       const opKey = classifyOperator(item.probe);
@@ -259,8 +273,8 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
 
       let statusText = loss === 100 || avg === null ? `❌ 阻断 (${city})` : (loss > 0 ? `⚠️ 丢包 ${loss}% (${city})` : `✅ 畅通 (${avg.toFixed(1)}ms - ${city})`);
       
-      // 优选：如果有畅通结果，覆盖之前的阻断/空白结果
-      if (operatorMap[opKey].status.startsWith("🚫") || statusText.startsWith("✅")) {
+      // 优选逻辑：只要测试出能通的数据，就立刻覆盖之前的报错或空白数据
+      if (operatorMap[opKey].status.startsWith("🚫") || operatorMap[opKey].status.includes("阻断") || statusText.startsWith("✅")) {
         operatorMap[opKey].status = `<span style="color: ${loss === 100 ? '#ff4d4f' : (loss > 0 ? '#faad14' : '#52c41a')}; font-weight: bold;">${statusText}</span>`;
       }
     });
