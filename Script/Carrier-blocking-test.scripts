@@ -3,9 +3,9 @@
  *
  * 使用: 在 Loon 的节点页面对目标执行「运营商阻断查询」
  * 
- * @Author: 6otho
+ * @Author: RavelloH, RuCu6
  * @Modifier: Gemini
- * @Updated: 2026-07-17-16
+ * @Updated: 2026-07-17-17
  *
  * ===== Loon =====
  * [Script]
@@ -142,16 +142,14 @@ async function runProvinceCheck(info, regionName, isUdp) {
     target = target.slice(1, -1);
   }
 
+  // 严格限制在本地省份进行查找，剔除所有全国性 AS 兜底探针
   const body = {
     target: target,
     type: "ping",
     locations: [
       { "magic": `China Telecom + ${regionName}`, "limit": 1 },
       { "magic": `China Unicom + ${regionName}`, "limit": 1 },
-      { "magic": `China Mobile + ${regionName}`, "limit": 1 },
-      { "magic": "AS4134", "limit": 1 }, 
-      { "magic": "AS4837", "limit": 1 }, 
-      { "magic": "AS9808", "limit": 1 }  
+      { "magic": `China Mobile + ${regionName}`, "limit": 1 }
     ],
     measurementOptions: {
       packets: 3
@@ -252,9 +250,9 @@ function escapeHtml(str) {
 
 function render(localNet, localTest, testResult, isUdp, cleanRegion) {
   const operatorMap = {
-    ct: { name: "中国电信", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false, isLocal: false },
-    cu: { name: "中国联通", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false, isLocal: false },
-    cm: { name: "中国移动", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false, isLocal: false }
+    ct: { name: "中国电信", latency: "--", loss: "--", status: "🚫 本地无在线探针", color: "#8c8c8c", blocked: false },
+    cu: { name: "中国联通", latency: "--", loss: "--", status: "🚫 本地无在线探针", color: "#8c8c8c", blocked: false },
+    cm: { name: "中国移动", latency: "--", loss: "--", status: "🚫 本地无在线探针", color: "#8c8c8c", blocked: false }
   };
 
   if (testResult && Array.isArray(testResult.results)) {
@@ -269,40 +267,34 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
       const city = probe.city || "未知地区";
       const probeRegion = cleanRegionName(probe.region);
 
+      // 强制判定：必须是本地省份探针。如果不是，直接丢弃过滤，拒绝外省节点干扰
       const isLocal = probeRegion.toLowerCase() === cleanRegion.toLowerCase() || String(city).toLowerCase().includes(cleanRegion.toLowerCase());
+      if (!isLocal) return; 
 
       let statusText = "";
       let isBlocked = false;
       let uiColor = "";
 
-      const locationLabel = isLocal ? `${city}` : `跨省: ${city}`;
-
       if (loss === 100 || avg === null) {
-        statusText = `❌ 阻断 (${locationLabel})`;
+        statusText = `❌ 阻断 (${city})`;
         isBlocked = true;
         uiColor = "#ff4d4f";
       } else if (loss > 0) {
-        statusText = `⚠️ 丢包 ${loss}% (${avg.toFixed(1)}ms - ${locationLabel})`;
+        statusText = `⚠️ 丢包 ${loss}% (${avg.toFixed(1)}ms - ${city})`;
         uiColor = "#faad14";
       } else {
-        statusText = `✅ 畅通 (${avg.toFixed(1)}ms - ${locationLabel})`;
+        statusText = `✅ 畅通 (${avg.toFixed(1)}ms - ${city})`;
         uiColor = "#52c41a";
       }
 
-      const candidate = {
+      operatorMap[opKey] = {
         name: operatorMap[opKey].name,
         latency: avg !== null ? `${avg.toFixed(1)}ms` : "--",
         loss: `${loss}%`,
         status: statusText,
         color: uiColor,
-        blocked: isBlocked,
-        isLocal: isLocal
+        blocked: isBlocked
       };
-
-      const existing = operatorMap[opKey];
-      if (existing.status.startsWith("⚪") || (isLocal && !existing.isLocal)) {
-        operatorMap[opKey] = candidate;
-      }
     });
   }
 
@@ -338,9 +330,9 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
         feedbackBg = "#dafbe1";
         feedbackText = "#1a7f37";
         feedbackBorder = "#57ab5a";
-        localFeedbackText = `物理网卡直连成功 (${localTest.ms}ms)，测速平台暂无对比数据。`;
+        localFeedbackText = `物理网卡直连成功 (${localTest.ms}ms)，本地暂无测速探针数据。`;
       } else {
-        localFeedbackText = `未获取到本地【${localIsp}】测速探针的数据。`;
+        localFeedbackText = `当前本地省内没有【${localIsp}】测速探针在线。`;
       }
     } else if (targetOpResult.blocked) {
       if (localTest.reachable) {
@@ -348,7 +340,7 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
         feedbackBg = "#fff8e6";
         feedbackText = "#9a6700";
         feedbackBorder = "#faad14";
-        localFeedbackText = `虽然真机成功，但探针反馈阻断，网络可能不稳定。`;
+        localFeedbackText = `物理网卡握手正常，但本地探针阻断，连接质量可能受限。`;
       } else {
         feedbackTitle = "🛑 本地已被阻断";
         feedbackBg = "#ffebe9";
@@ -376,17 +368,17 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
   const countUntested = (operatorMap.ct.loss === "--" ? 1 : 0) + (operatorMap.cu.loss === "--" ? 1 : 0) + (operatorMap.cm.loss === "--" ? 1 : 0);
 
   if (localTest.reachable) {
-    diagnosis = "物理直连正常，节点对您当前网络可用。部分跨省探针阻断不影响您连接。";
+    diagnosis = "真机实测连接成功，对您当前网络完全可用。部分省内本地探针阻断暂不影响您的真机直连。";
   } else if (isUdp && countBlocked === 0 && countUntested < 3) {
-    diagnosis = "UDP 节点 IP 存活，省份及全国三网路由连通正常，可放心连接。";
+    diagnosis = "UDP IP 在您本地省份三网内存活，路由连通良好，可放心连接。";
   } else if (countBlocked === 3 - countUntested && countUntested < 3) {
-    diagnosis = "三网及本地均无响应，节点疑似已关机、离线或被墙。";
+    diagnosis = "本地三网及真机均无响应，节点可能已离线或被物理封锁。";
   } else if (countBlocked > 0) {
-    diagnosis = "存在部分运营商屏蔽阻断，请结合您本地网络合理选择。";
+    diagnosis = "本地省内运营商存在部分差异阻断。请配合您当前的本地网络合理选择。";
   } else if (countBlocked === 0 && countUntested < 3) {
-    diagnosis = "节点全国及本省三网连通良好，未见屏蔽。";
+    diagnosis = "当前节点在您所处省份三网连通性良好，未见屏蔽。";
   } else {
-    diagnosis = "因在线测速探针部分缺席，无法提供完整的诊断报告。";
+    diagnosis = "因本地省内探针全部缺席，无法出具完整的省份连通诊断报告。";
   }
 
   const textReport = [
@@ -422,7 +414,7 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
 
     <!-- 运营商检测结果 -->
     <div style="border-radius: 8px; border: 1px solid rgba(140, 140, 140, 0.15); overflow: hidden; margin-bottom: 12px;">
-      <div style="background-color: rgba(140, 140, 140, 0.08); font-weight: bold; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid rgba(140, 140, 140, 0.15);">🇨🇳 运营商阻断检测 (${isUdp ? "ICMP" : "TCP端口"})</div>
+      <div style="background-color: rgba(140, 140, 140, 0.08); font-weight: bold; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid rgba(140, 140, 140, 0.15);">🇨🇳 本地运营商阻断检测 (${isUdp ? "ICMP" : "TCP端口"})</div>
       
       <div style="padding: 10px 12px; border-bottom: 1px solid rgba(140, 140, 140, 0.08); display: flex; justify-content: space-between; align-items: center;">
         <span style="font-weight: bold; color: inherit;">中国电信 (${isUdp ? "ICMP" : "AS4134"})</span>
@@ -459,7 +451,7 @@ function render(localNet, localTest, testResult, isUdp, cleanRegion) {
   `;
 
   $done({
-    title: "🌐 运营商阻断检测报告",
+    title: "🌐 本地运营商阻断检测报告",
     content: textReport,
     htmlMessage: htmlReport
   });
