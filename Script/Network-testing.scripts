@@ -1,0 +1,320 @@
+/**
+ * 节点阻断检测 · Loon generic 脚本
+ *
+ * 使用: 在 Loon 的节点页面对目标执行「连通性测试」
+ *
+ * @Author: RavelloH, RuCu6
+ * @Modifier: Gemini
+ * @Updated: 2026-07-17
+ *
+ * ===== Loon =====
+ * [Script]
+ * generic script-path=https://.../Scripts/nodecheck.js, tag=连通性测试, timeout=60, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/hand-painted/56.png
+ */
+
+const SCRIPT_VERSION = "2026.07.17 12:50";
+const IP_API = "http://ip-api.com/json?lang=zh-CN";
+const CHECK_HOST = "https://check-host.net";
+const REQUEST_TIMEOUT = 10000; // 请求超时时间(毫秒)
+const RESULT_DELAY = 5500; // 首次等待探测时间(毫秒)
+const RESULT_RETRY_DELAY = 3500; // 重试等待时间(毫秒)
+
+// 获取 Loon 环境参数
+const params = typeof $environment !== "undefined" && $environment.params ? $environment.params : {};
+const nodeName = params.node || "";
+const nodeInfo = params.nodeInfo || {};
+
+if (!nodeName) {
+  finishError("未获取到节点名称，请长按具体节点运行此脚本。");
+} else {
+  run();
+}
+
+async function run() {
+  try {
+    // 并行执行：节点连通性测试、本机直连测试、远端服务器可用性测试
+    const [nodeRes, directRes, remoteRes] = await Promise.all([checkGeo(nodeName), checkGeo("DIRECT"), checkRemote(nodeInfo)]);
+
+    render(nodeRes, directRes, remoteRes);
+  } catch (error) {
+    finishError(`执行异常: ${error.message}`);
+  }
+}
+
+// === 核心检测逻辑 ===
+
+async function checkGeo(node) {
+  try {
+    const data = await requestJson(IP_API, node);
+    if (data && data.status === "fail") {
+      return { ok: false, error: data.message || "IP 查询失败" };
+    }
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+async function checkRemote(info) {
+  const address = info?.address ? String(info.address) : "";
+  const port = info?.port ? String(info.port) : "";
+
+  if (!address || !port) {
+    return { available: false, reachable: false, error: "未获取到节点底层 IP/端口，请对具体节点运行" };
+  }
+
+  // 处理 IPv6 格式包裹
+  const host = address.includes(":") && !address.startsWith("[") ? `[${address}]` : address;
+  const target = `${host}:${port}`;
+  const submitUrl = `${CHECK_HOST}/check-tcp?host=${encodeURIComponent(target)}&max_nodes=10`;
+
+  try {
+    const submission = await requestJson(submitUrl, "DIRECT");
+    if (!submission?.ok || !submission?.request_id) {
+      return { available: false, reachable: false, target, error: "远端探测任务提交失败或被限流" };
+    }
+
+    const requestId = submission.request_id;
+    const nodes = submission.nodes || {};
+    const names = Object.keys(nodes);
+    const countries = {};
+    names.forEach((name) => {
+      countries[name] = Array.isArray(nodes[name]) ? nodes[name][0] : "";
+    });
+
+    // 首次等待并获取结果
+    await wait(RESULT_DELAY);
+    let result = await getRemoteResult(requestId, names, countries);
+
+    // 如果未完成，延时后重试一次
+    if (!result.complete) {
+      await wait(RESULT_RETRY_DELAY);
+      result = await getRemoteResult(requestId, names, countries);
+    }
+
+    if (!result.complete && result.items.length === 0) {
+      return { available: false, reachable: false, target, error: "远端探测响应超时，暂未返回结果" };
+    }
+
+    return {
+      available: true,
+      reachable: result.reachable,
+      data: result.items,
+      target
+    };
+  } catch (error) {
+    return { available: false, reachable: false, target, error: `不可用: ${error.message}` };
+  }
+}
+
+async function getRemoteResult(requestId, names, countries) {
+  const result = await requestJson(`${CHECK_HOST}/check-result/${requestId}`, "DIRECT");
+  let reachable = false;
+  let complete = false;
+
+  const items = names.map((name) => {
+    const records = result && result[name];
+    const record = Array.isArray(records) && records.length ? records[0] : null;
+    const seconds = record && Number(record.time);
+
+    if (record !== null) complete = true;
+    if (Number.isFinite(seconds) && seconds >= 0) reachable = true;
+
+    return {
+      flag: getFlag(countries[name]),
+      msStr: Number.isFinite(seconds) && seconds >= 0 ? formatMs(seconds * 1000) : "--.--ms"
+    };
+  });
+
+  return { reachable, complete, items };
+}
+
+// === 网络请求与工具函数 ===
+
+function requestJson(url, node) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      url,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Loon Node Check"
+      }
+    };
+    if (node) options.node = node;
+
+    // JS 层级并发控制超时，避免依赖不同版本 Loon 的底层 timeout 实现
+    let isSettled = false;
+    const timer = setTimeout(() => {
+      if (!isSettled) {
+        isSettled = true;
+        reject(new Error("请求超时"));
+      }
+    }, REQUEST_TIMEOUT);
+
+    $httpClient.get(options, (error, response, body) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+
+      if (error) return reject(new Error(error));
+
+      const status = Number(response?.status);
+      if (status < 200 || status >= 300) return reject(new Error(`HTTP ${status}`));
+
+      try {
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(new Error("JSON 格式解析失败"));
+      }
+    });
+  });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatMs(ms) {
+  if (ms >= 10000) return `${Math.floor(ms)}ms`;
+  if (ms >= 1000)
+    return `${Math.floor(ms)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}ms`;
+  if (ms >= 100) return `${ms.toFixed(1)}ms`;
+  if (ms >= 10) return `${ms.toFixed(2)}ms`;
+  if (ms <= 0) return "0.00ms";
+  return `${ms.toFixed(3)}ms`;
+}
+
+function getFlag(countryCode) {
+  if (!countryCode || String(countryCode).length !== 2) return "🌍";
+  const points = String(countryCode)
+    .toUpperCase()
+    .split("")
+    .map((char) => 127397 + char.charCodeAt());
+  return String.fromCodePoint(...points);
+}
+
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// === 渲染与输出 UI ===
+
+function render(node, direct, remote) {
+  // 构建纯文本 (Fallback) 与 HTML
+  const textParts = [];
+  const htmlParts = [];
+
+  // 1. 节点代理块
+  let nodeText = `【节点代理】: ${node.ok ? "✅ 正常" : "❌ 不可达"}`;
+  let nodeHtml = `<b>节点代理</b>: ${node.ok ? "✅ 正常" : "❌ 不可达"}`;
+  if (node.ok && node.data) {
+    const d = node.data;
+    const loc = [d.country, d.regionName || d.region, d.city].filter(Boolean).join(" - ");
+    nodeText += `\n ├ IP: ${d.ip || d.query}\n ├ 位置: ${loc}\n └ ISP: ${d.isp || d.organization}`;
+    nodeHtml += `<br/><b>IP</b>: ${escapeHtml(d.ip || d.query)}`;
+    if (loc) nodeHtml += `<br/><b>位置</b>: ${escapeHtml(loc)}`;
+    nodeHtml += `<br/><b>ISP</b>: ${escapeHtml(d.isp || d.organization)}`;
+  } else if (node.error) {
+    nodeText += `\n └ ${node.error}`;
+    nodeHtml += `<br/><small style="color: gray;">${escapeHtml(node.error)}</small>`;
+  }
+  textParts.push(nodeText);
+  htmlParts.push(nodeHtml);
+
+  // 2. 本机网络块
+  let directText = `【本机网络】: ${direct.ok ? "✅ 正常" : "❌ 异常"}`;
+  let directHtml = `<b>本机网络</b>: ${direct.ok ? "✅ 正常" : "❌ 异常"}`;
+  if (!direct.ok && direct.error) {
+    directText += `\n └ ${direct.error}`;
+    directHtml += `<br/><small style="color: gray;">${escapeHtml(direct.error)}</small>`;
+  }
+  textParts.push(directText);
+  htmlParts.push(directHtml);
+
+  // 3. 远端探测块
+  let remoteText = "";
+  let remoteHtml = "";
+  if (!remote.available) {
+    remoteText = `【远端探测】: ⚠️ 未完成\n └ ${remote.error || "未知原因"}`;
+    remoteHtml = `<b>远端探测</b>: ⚠️ 未完成<br/><small style="color: gray;">${escapeHtml(remote.error)}</small>`;
+  } else {
+    remoteText = `【远端探测】: ${remote.reachable ? "✅ 可达" : "❌ 不可达"}`;
+    remoteHtml = `<b>远端探测</b>: ${remote.reachable ? "✅ 可达" : "❌ 不可达"}`;
+
+    if (remote.data && remote.data.length > 0) {
+      remoteText += "\n";
+      for (let i = 0; i < remote.data.length; i += 2) {
+        const left = remote.data[i];
+        const right = remote.data[i + 1];
+        remoteHtml += `<br/>${left.flag} <code style="font-family: monospace;">${left.msStr}</code>`;
+        remoteText += ` ${left.flag} ${left.msStr}`;
+        if (right) {
+          remoteHtml += `&emsp;&emsp;${right.flag} <code style="font-family: monospace;">${right.msStr}</code>`;
+          const padding = left.msStr.length < 8 ? Array(10 - left.msStr.length).join(" ") : "  ";
+          remoteText += `${padding}${right.flag} ${right.msStr}`;
+        }
+        remoteText += "\n";
+      }
+      remoteText = remoteText.trimEnd();
+    }
+  }
+  textParts.push(remoteText);
+  htmlParts.push(remoteHtml);
+
+  // 4. 诊断结论
+  let conclusion = "";
+  if (!direct.ok) {
+    conclusion = "⚠️ 本机网络异常，无法连接外部网络";
+  } else if (node.ok) {
+    conclusion = "✅ 当前节点一切正常，可顺利连通";
+  } else if (remote.available && remote.reachable) {
+    conclusion = "🚫 疑似遭到运营商或 GFW 阻断\n(探测到海外服务器连通正常，但本机无法直连)";
+  } else if (remote.available && !remote.reachable) {
+    conclusion = "💤 节点疑似已离线\n(探测到海外服务器与本机均无法连通)";
+  } else {
+    conclusion = "❓ 数据不足，无法精确区分是阻断还是离线";
+  }
+
+  textParts.push(`【诊断结论】\n${conclusion}`);
+  htmlParts.push(`<b>📋 诊断结论</b><br/>${escapeHtml(conclusion).replace(/\n/g, "<br/>")}`);
+
+  // 5. 目标节点信息
+  const typeStr = nodeInfo.type ? ` · ${nodeInfo.type}` : "";
+  let targetText = `【当前节点】\n 📍 ${nodeName}${typeStr}`;
+  let targetHtml = `<b>节点</b>: <span style="color: #467fcf; font-weight: bold;">${escapeHtml(nodeName)}${escapeHtml(
+    typeStr
+  )}</span>`;
+
+  if (remote.target) {
+    targetText += `\n 🎯 探测目标: ${remote.target}`;
+    targetHtml += `<br/><small style="color: gray;">探测目标: ${escapeHtml(remote.target)}</small>`;
+  }
+  textParts.push(targetText);
+  htmlParts.push(targetHtml);
+
+  // 完成输出
+  $done({
+    title: "🌐 节点阻断检测报告",
+    content: textParts.join("\n\n"), // 为不支持 HTML 的视图提供完美的纯文本降级
+    htmlMessage: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: inherit; word-break: break-all;">${htmlParts.join(
+      "<br/><br/>"
+    )}</div>`
+  });
+}
+
+function finishError(message) {
+  $done({
+    title: "🌐 节点阻断检测",
+    content: `🛑 ${message}`,
+    htmlMessage: `<div style="font-family: -apple-system, sans-serif; font-size: 16px; color: inherit;"><b>🛑 ${escapeHtml(
+      message
+    )}</b></div>`
+  });
+}
