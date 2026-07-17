@@ -12,10 +12,10 @@
  * generic script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Script/Carrier-blocking-test.scripts, tag=运营商阻断查询, timeout=60, img-url=https://raw.githubusercontent.com/tugepaopao/Image-Storage/master/cartoon/Cute1/1644010.png
  */
 
-const IP_API = "http://ip-api.com/json?lang=zh-CN";
+const IP_API = "http://ip-api.com/json";
 const GLOBALPING_API = "https://api.globalping.io/v1/measurements";
-const REQUEST_TIMEOUT = 8000; // 接口请求超时时间
-const HANDSHAKE_TIMEOUT = 3000; // 本地真机直接握手检测的超时时间 (3秒)
+const REQUEST_TIMEOUT = 10000; // 接口请求超时时间
+const HANDSHAKE_TIMEOUT = 3000; // 本地真机直接握手检测的超时时间
 
 const params = typeof $environment !== "undefined" && $environment.params ? $environment.params : {};
 const nodeName = params.node || "";
@@ -29,44 +29,60 @@ if (!nodeName) {
 
 async function run() {
   try {
-    // 1. 并行执行：识别本地真实物理网络、执行手机本地到节点的真实连接测试
-    const [localNet, localTest] = await Promise.all([
-      detectLocalNetwork(),
-      testLocalDirectConnection(nodeInfo)
+    // 1. 协议特征识别 (特别对 Hysteria 2 / TUIC 等 UDP 协议进行处理，防止产生 TCP 误报)
+    const nodeType = String(nodeInfo?.type || "").toLowerCase();
+    const nodeNameLower = String(nodeName).toLowerCase();
+    const isUdpProtocol = 
+      nodeType.includes("hysteria") || 
+      nodeType.includes("hy") || 
+      nodeType.includes("tuic") || 
+      nodeNameLower.includes("hy2") || 
+      nodeNameLower.includes("hysteria") || 
+      nodeNameLower.includes("tuic");
+
+    // 2. 并行获取本地网络中、英文数据（获取英文省份名用于 Globalping 定向省份测速）
+    const [localNetZh, localNetEn] = await Promise.all([
+      requestJson(`${IP_API}?lang=zh-CN`, "DIRECT").catch(() => null),
+      requestJson(IP_API, "DIRECT").catch(() => null)
     ]);
 
-    // 2. 如果本地连接失败，启动境外中立节点对照测试，判断是本地阻断还是服务器离线
-    let remoteTest = { available: false };
-    if (!localTest.reachable) {
-      remoteTest = await testRemoteFromOverseas(nodeInfo);
+    // 提取本地省份英文名称
+    let localRegionEn = "Guangdong"; // 默认广东省 fallback
+    if (localNetEn && localNetEn.regionName) {
+      localRegionEn = localNetEn.regionName;
+    } else if (localNetZh && localNetZh.regionName) {
+      // 英文 API 偶尔失效时的备用映射
+      const zhToEn = {
+        "广东": "Guangdong", "北京": "Beijing", "上海": "Shanghai", "浙江": "Zhejiang",
+        "江苏": "Jiangsu", "福建": "Fujian", "四川": "Sichuan", "山东": "Shandong",
+        "湖北": "Hubei", "湖南": "Hunan", "河南": "Henan", "河北": "Hebei",
+        "安徽": "Anhui", "江西": "Jiangxi", "重庆": "Chongqing", "陕西": "Shaanxi"
+      };
+      const zhName = localNetZh.regionName.replace("省", "").replace("市", "");
+      if (zhToEn[zhName]) {
+        localRegionEn = zhToEn[zhName];
+      }
     }
 
-    render(localNet, localTest, remoteTest);
+    // 3. 执行物理通路检测
+    let localTest = { reachable: false, skipped: false };
+    if (isUdpProtocol) {
+      // UDP 协议（Hy2/TUIC）由于真机不具备原生本地 UDP 端口探针，因此免除 TCP 端口测试，由三网 ICMP 统一测试
+      localTest.skipped = true;
+    } else {
+      localTest = await testLocalDirectConnection(nodeInfo);
+    }
+
+    // 4. 获取本地省份针对三大运营商的定制测速结果
+    const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
+
+    render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol);
   } catch (error) {
     finishError(`执行异常: ${error.message}`);
   }
 }
 
-// === 本地网络环境识别 ===
-async function detectLocalNetwork() {
-  try {
-    const data = await requestJson(IP_API, "DIRECT");
-    if (data && data.status === "success") {
-      return {
-        ok: true,
-        ip: data.query || "未知",
-        city: data.city || "",
-        region: data.regionName || "",
-        isp: data.isp || "未知运营商"
-      };
-    }
-    return { ok: false, error: "运营商数据库响应异常" };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
-
-// === 手机本地网卡到节点端口的真实连接探测 ===
+// === 本地真机对 TCP 节点的端口可用性探测 ===
 function testLocalDirectConnection(info) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : null;
@@ -82,7 +98,6 @@ function testLocalDirectConnection(info) {
   return new Promise((resolve) => {
     let isSettled = false;
 
-    // 本地连接超时控制
     const timer = setTimeout(() => {
       if (!isSettled) {
         isSettled = true;
@@ -92,7 +107,7 @@ function testLocalDirectConnection(info) {
 
     $httpClient.get({
       url,
-      node: "DIRECT", // 强制使用当前手机物理网卡直连，绕过任何代理组
+      node: "DIRECT", // 绕过任何网络代理组，强制真机物理网卡探测
       headers: { "User-Agent": "LoonLocalHandshakeTest" }
     }, (error, response, body) => {
       if (isSettled) return;
@@ -103,26 +118,23 @@ function testLocalDirectConnection(info) {
 
       if (error) {
         const errStr = String(error).toLowerCase();
-        // 握手超时通常意味着数据包在中途被悄悄丢弃（GFW 阻断的常见特征）
         if (errStr.includes("timeout") || errStr.includes("time out")) {
           resolve({ reachable: false, error: "TIMEOUT", ms });
         } else if (errStr.includes("refused")) {
-          // 连接被对方主动拒绝（说明 IP 路由可达，但该端口在服务器端未开启或被防火墙拦截）
           resolve({ reachable: true, error: "REFUSED", ms });
         } else {
-          // 其他由于协议不匹配导致的错误（如 Reset、Bad response），皆说明 TCP 物理层已成功建立过握手
+          // 其他非超时类异常皆证明 TCP 物理层完成了往返握手
           resolve({ reachable: true, ms });
         }
       } else {
-        // 成功响应说明端口畅通
         resolve({ reachable: true, ms });
       }
     });
   });
 }
 
-// === 境外中立节点探测 (Globalping 境外探针) ===
-async function testRemoteFromOverseas(info) {
+// === 精准定向本地省份三大运营商的探测任务 ===
+async function runProvinceCheck(info, regionName, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
 
@@ -131,48 +143,56 @@ async function testRemoteFromOverseas(info) {
     target = target.slice(1, -1);
   }
 
+  // 1. 根据识别到的省份名称构建精确位置标签，让探针直接获取本地测试结果
   const body = {
     target: target,
     type: "ping",
-    locations: [{ "magic": "US", "limit": 1 }], // 仅使用 1 个境外的节点
+    locations: [
+      { "magic": `China Telecom + ${regionName}`, "limit": 1 },
+      { "magic": `China Unicom + ${regionName}`, "limit": 1 },
+      { "magic": `China Mobile + ${regionName}`, "limit": 1 }
+    ],
     measurementOptions: {
-      packets: 3,
-      protocol: "tcp",
-      port: port
+      packets: 3
     }
   };
 
+  // 2. 协议分流：
+  // 普通 TCP 节点使用精确的 TCP 端口探测。
+  // Hysteria 2 / TUIC (UDP) 使用标准的 ICMP Ping 检测目标主机 IP 在本地三网下的物理活跃状态。
+  if (!isUdp) {
+    body.measurementOptions.protocol = "tcp";
+    body.measurementOptions.port = port;
+  }
+
   try {
     const submission = await requestJson(GLOBALPING_API, "DIRECT", "POST", body);
-    if (!submission?.id) return { available: false, error: "任务创建失败" };
-
-    const result = await pollGlobalpingResult(submission.id);
-    if (result && Array.isArray(result.results) && result.results.length > 0) {
-      const stats = result.results[0].result?.stats;
-      const loss = stats && typeof stats.loss === "number" ? stats.loss : 100;
-      const avg = stats && typeof stats.avg === "number" ? stats.avg : null;
-
-      if (loss === 100 || avg === null) {
-        return { available: true, reachable: false, error: "境外同样不可达" };
-      }
-      return { available: true, reachable: true, latency: avg };
-    }
-    return { available: false, error: "未返回有效结果" };
+    if (!submission?.id) return null;
+    return await pollGlobalpingResult(submission.id);
   } catch (e) {
-    return { available: false, error: e.message };
+    return null;
   }
 }
 
 async function pollGlobalpingResult(id) {
   const url = `${GLOBALPING_API}/${id}`;
   let attempts = 0;
-  while (attempts < 4) {
-    await wait(1800);
+  while (attempts < 5) {
+    await wait(2000);
     const res = await requestJson(url, "DIRECT");
     if (res && res.status !== "in_progress") return res;
     attempts++;
   }
   return await requestJson(url, "DIRECT");
+}
+
+function classifyOperator(probe) {
+  const asn = Number(probe.asn);
+  const net = String(probe.network).toLowerCase();
+  if (asn === 4134 || net.includes("telecom") || net.includes("电信")) return "ct";
+  if (asn === 4837 || net.includes("unicom") || net.includes("联通")) return "cu";
+  if (asn === 9808 || net.includes("mobile") || net.includes("移动")) return "cm";
+  return "other";
 }
 
 // === 网络请求通用工具函数 ===
@@ -182,7 +202,7 @@ function requestJson(url, node, method = "GET", body = null) {
       url,
       headers: {
         Accept: "application/json",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Loon Network Check"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"
       }
     };
     if (node) options.node = node;
@@ -234,100 +254,192 @@ function escapeHtml(str) {
 }
 
 // === UI 渲染及诊断逻辑 ===
-function render(localNet, localTest, remoteTest) {
-  let statusTitle = "连接诊断报告";
-  let statusBg = "#f6f8fa";
-  let statusText = "#24292f";
-  let statusBorder = "#d0d7de";
-  let diagnosisText = "";
+function render(localNet, localTest, testResult, isUdp) {
+  const operatorMap = {
+    ct: { name: "中国电信", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false },
+    cu: { name: "中国联通", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false },
+    cm: { name: "中国移动", latency: "--", loss: "--", status: "⚪ 无在线节点/未返回数据", color: "#8c8c8c", blocked: false }
+  };
 
-  const localIspName = localNet.ok ? localNet.isp : "本地网络";
+  // 解析匹配省份三网探针数据
+  if (testResult && Array.isArray(testResult.results)) {
+    testResult.results.forEach((item) => {
+      const probe = item.probe;
+      const opKey = classifyOperator(probe);
+      if (opKey === "other") return;
 
-  if (localTest.reachable) {
-    // 手机本地直连通过
-    statusTitle = "🟢 本地连接正常";
-    statusBg = "#dafbe1";
-    statusText = "#1a7f37";
-    statusBorder = "#57ab5a";
-    diagnosisText = `该节点在您手机当前的物理网络下连通性良好，本地直接握手测试通过（延时约为 ${localTest.ms}ms）。没有检测到来自本地运营商的连接阻断行为。`;
-  } else if (!localTest.reachable && remoteTest.available && remoteTest.reachable) {
-    // 本地不通，但境外能通 -> 本地运营商阻断
-    statusTitle = "🔴 遭到本地运营商阻断";
-    statusBg = "#ffebe9";
-    statusText = "#cf222e";
-    statusBorder = "#ff8182";
-    diagnosisText = `境外中立探针检测到该节点运行正常（延迟 ${remoteTest.latency.toFixed(1)}ms）。但您当前手机的真实网卡直连尝试已超时。这是典型的 **${localIspName}** 运营商 QOS、黑洞或 GFW 端口阻断行为。`;
-  } else if (!localTest.reachable && remoteTest.available && !remoteTest.reachable) {
-    // 本地不通，境外也不通 -> 节点服务器故障/下线
-    statusTitle = "⚫ 节点服务器已离线";
-    statusBg = "#eaeef2";
-    statusText = "#57606a";
-    statusBorder = "#afb8c1";
-    diagnosisText = "本地手机网卡与境外中立探针均无法与该节点建立连接。该节点服务器极有可能处于关机、离线故障或端口未开放状态。";
-  } else {
-    // 本地不通，但境外测试未获取到有效数据
-    statusTitle = "⚠️ 物理连通超时";
-    statusBg = "#fff8e6";
-    statusText = "#9a6700";
-    statusBorder = "#faad14";
-    diagnosisText = "手机当前网络直连握手尝试已超时，因境外比对探针响应异常，无法精细区分属于本地运营商屏蔽还是服务器关机故障。";
+      const stats = item.result?.stats;
+      const loss = stats && typeof stats.loss === "number" ? stats.loss : 100;
+      const avg = stats && typeof stats.avg === "number" ? stats.avg : null;
+      const locStr = `${probe.city || "未知地区"}`;
+
+      let statusText = "";
+      let isBlocked = false;
+      let uiColor = "";
+
+      if (loss === 100 || avg === null) {
+        statusText = `❌ 阻断 (${locStr})`;
+        isBlocked = true;
+        uiColor = "#ff4d4f";
+      } else if (loss > 0) {
+        statusText = `⚠️ 丢包 ${loss}% (${avg.toFixed(1)}ms - ${locStr})`;
+        uiColor = "#faad14";
+      } else {
+        statusText = `✅ 畅通 (${avg.toFixed(1)}ms - ${locStr})`;
+        uiColor = "#52c41a";
+      }
+
+      operatorMap[opKey] = {
+        name: operatorMap[opKey].name,
+        latency: avg !== null ? `${avg.toFixed(1)}ms` : "--",
+        loss: `${loss}%`,
+        status: statusText,
+        color: uiColor,
+        blocked: isBlocked
+      };
+    });
   }
 
-  // 纯文本 Fallback 输出
+  // 1. 本地网络信息提炼
+  let localIsp = "未知运营商";
+  let localIp = "未知 IP";
+  let localLocStr = "未知地区";
+  let userOpCode = "other";
+
+  if (localNet && localNet.status === "success") {
+    localIsp = localNet.isp || "未知运营商";
+    localIp = localNet.query || "未知 IP";
+    localLocStr = `${localNet.regionName || ""} ${localNet.city || ""}`;
+
+    const ispLower = localIsp.toLowerCase();
+    if (localIsp.includes("电信") || ispLower.includes("telecom")) userOpCode = "ct";
+    else if (localIsp.includes("联通") || ispLower.includes("unicom")) userOpCode = "cu";
+    else if (localIsp.includes("移动") || ispLower.includes("mobile")) userOpCode = "cm";
+  }
+
+  // 2. 本机对应测速结果匹配与提示卡片渲染
+  let feedbackTitle = "📢 诊断结果反馈";
+  let feedbackBg = "#f6f8fa";
+  let feedbackText = "#24292f";
+  let feedbackBorder = "#d0d7de";
+  let localFeedbackText = "";
+
+  if (userOpCode === "other") {
+    localFeedbackText = "ℹ️ 本地非三大主干运营商宽带，请对照下方详细测试表进行参考。";
+  } else {
+    const targetOpResult = operatorMap[userOpCode];
+    if (targetOpResult.loss === "--") {
+      localFeedbackText = `ℹ️ 您的物理网络归属于【${localIsp}】，省内暂未获取到在线测速探针。请参考邻近测速点。`;
+    } else if (targetOpResult.blocked) {
+      feedbackTitle = "🛑 本地运营商链路已切断";
+      feedbackBg = "#ffebe9";
+      feedbackText = "#cf222e";
+      feedbackBorder = "#ff8182";
+      localFeedbackText = `检测到该节点在您的本地网络（${localIsp}）下发生了物理阻断，当前可能已无法直连，建议更换。`;
+    } else if (targetOpResult.loss !== "0%") {
+      feedbackTitle = "⚠️ 注意：本地网络连通性较弱";
+      feedbackBg = "#fff8e6";
+      feedbackText = "#9a6700";
+      feedbackBorder = "#faad14";
+      localFeedbackText = `该节点在本地（${localIsp}）存在轻微丢包（${targetOpResult.loss}），建议观察连通质量。`;
+    } else {
+      feedbackTitle = "✅ 畅通：本地接入匹配良好";
+      feedbackBg = "#dafbe1";
+      feedbackText = "#1a7f37";
+      feedbackBorder = "#57ab5a";
+      localFeedbackText = `该节点在您的本地（${localIsp}）链路极其顺畅，延迟约 ${targetOpResult.latency}，请放心连接。`;
+    }
+  }
+
+  // 3. 诊断结论
+  let diagnosis = "未知";
+  const countBlocked = (operatorMap.ct.blocked ? 1 : 0) + (operatorMap.cu.blocked ? 1 : 0) + (operatorMap.cm.blocked ? 1 : 0);
+  const countUntested = (operatorMap.ct.loss === "--" ? 1 : 0) + (operatorMap.cu.loss === "--" ? 1 : 0) + (operatorMap.cm.loss === "--" ? 1 : 0);
+
+  if (countBlocked === 3 - countUntested && countUntested < 3) {
+    diagnosis = isUdp ? "节点 IP 在您所在的本地省份三网探测中皆无响应，极有可能已彻底关机，或 IP 遭到了物理级封锁。" : "该节点已无法建立 TCP/IP 握手，大概率已关机、离线，或 IP 已被 GFW 屏蔽。";
+  } else if (countBlocked > 0) {
+    diagnosis = "典型的运营商差异化单向阻断。该节点已被部分国内运营商屏蔽，建议配合您当前的本地网络环境进行合理选择。";
+  } else if (countBlocked === 0 && countUntested < 3) {
+    diagnosis = "当前节点在您所处省份的三网连通性完全正常，暂未出现任何屏蔽或 QOS 限速拦截。";
+  } else {
+    diagnosis = "因三网在线测速探针部分缺席，无法出具完备的省份综合判定报告。";
+  }
+
+  // 纯文本 Fallback
   const textReport = [
     `【当前节点】: ${nodeName}`,
-    `【真机物理网络】: ${localNet.ok ? `${localNet.region} ${localNet.city} ${localNet.isp}` : "检测失败"}`,
-    `【真机直连延迟】: ${localTest.reachable ? `${localTest.ms}ms` : "超时/阻断"}`,
-    `【海外中立测试】: ${remoteTest.available ? (remoteTest.reachable ? `可达 (${remoteTest.latency.toFixed(1)}ms)` : "不可达") : "未执行/超时"}`,
-    `\n【诊断结论】\n${diagnosisText}`
+    `【真机物理网络】: ${localLocStr} ${localIsp}`,
+    `【协议模式】: ${isUdp ? "Hysteria 2 / TUIC (UDP)" : "普通 (TCP)"}`,
+    `【本机直连实测】: ${isUdp ? "UDP 免除 TCP 测试" : (localTest.reachable ? `${localTest.ms}ms` : "超时/阻断")}`,
+    `\n【省份内三网精确检测】`,
+    ` ├ 中国电信: ${operatorMap.ct.status}`,
+    ` ├ 中国联通: ${operatorMap.cu.status}`,
+    ` └ 中国移动: ${operatorMap.cm.status}`,
+    `\n【诊断结论】\n${diagnosis}`
   ].join("\n");
 
-  // HTML 卡片渲染
+  // HTML 卡片
   const htmlReport = `
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: inherit; word-break: break-all;">
     
-    <!-- 1. 真机物理网络卡片 -->
+    <!-- 本地网络识别 -->
     <div style="background-color: rgba(140, 140, 140, 0.05); border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(140, 140, 140, 0.15);">
       <div style="font-weight: bold; font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">📱 本地真机网卡识别</div>
       <div style="font-size: 13px;">
-        <div><b>真实地理位置</b>: ${escapeHtml(localNet.region)} ${escapeHtml(localNet.city)}</div>
-        <div><b>物理接入运营商</b>: <span style="color: #467fcf; font-weight: bold;">${escapeHtml(localNet.isp)}</span></div>
-        <div><b>真实公网出口 IP</b>: <code style="font-family: monospace;">${escapeHtml(localNet.ip)}</code></div>
+        <div><b>真实地理位置</b>: ${escapeHtml(localLocStr)}</div>
+        <div><b>物理接入运营商</b>: <span style="color: #467fcf; font-weight: bold;">${escapeHtml(localIsp)}</span></div>
+        <div><b>真实公网出口 IP</b>: <code style="font-family: monospace;">${escapeHtml(localIp)}</code></div>
       </div>
     </div>
 
-    <!-- 2. 实测双向网络通路 -->
+    <!-- 匹配本地运营商反馈 -->
+    <div style="background-color: ${feedbackBg}; color: ${feedbackText}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border-left: 5px solid ${feedbackBorder};">
+      <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px;">${feedbackTitle}</div>
+      <div style="font-size: 13px; opacity: 0.9;">${localFeedbackText}</div>
+    </div>
+
+    <!-- 省内三网检测结果 -->
     <div style="border-radius: 8px; border: 1px solid rgba(140, 140, 140, 0.15); overflow: hidden; margin-bottom: 12px;">
-      <div style="background-color: rgba(140, 140, 140, 0.08); font-weight: bold; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid rgba(140, 140, 140, 0.15);">🔍 实时网卡握手实测</div>
+      <div style="background-color: rgba(140, 140, 140, 0.08); font-weight: bold; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid rgba(140, 140, 140, 0.15);">🇨🇳 省内运营商检测结果 (${isUdp ? "ICMP" : "TCP端口"})</div>
       
-      <!-- 本地物理直连 -->
       <div style="padding: 10px 12px; border-bottom: 1px solid rgba(140, 140, 140, 0.08); display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: bold; color: inherit;">本地网卡 ➡️ 节点物理直连</span>
-        <span style="color: ${localTest.reachable ? "#52c41a" : "#ff4d4f"}; font-weight: bold; font-size: 13px;">
-          ${localTest.reachable ? `✅ 握手成功 (${localTest.ms}ms)` : "❌ 握手超时 (Timeout)"}
-        </span>
+        <span style="font-weight: bold; color: inherit;">中国电信 (${isUdp ? "ICMP" : "AS4134"})</span>
+        <span style="color: ${operatorMap.ct.color}; font-weight: bold; font-size: 13px;">${operatorMap.ct.status}</span>
       </div>
       
-      <!-- 境外中立中转 -->
+      <div style="padding: 10px 12px; border-bottom: 1px solid rgba(140, 140, 140, 0.08); display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: bold; color: inherit;">中国联通 (${isUdp ? "ICMP" : "AS4837"})</span>
+        <span style="color: ${operatorMap.cu.color}; font-weight: bold; font-size: 13px;">${operatorMap.cu.status}</span>
+      </div>
+      
       <div style="padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: bold; color: inherit;">境外探针 ➡️ 节点物理直连</span>
-        <span style="color: ${remoteTest.available ? (remoteTest.reachable ? "#52c41a" : "#ff4d4f") : "#8c8c8c"}; font-weight: bold; font-size: 13px;">
-          ${remoteTest.available ? (remoteTest.reachable ? `✅ 连通正常 (${remoteTest.latency.toFixed(1)}ms)` : "❌ 响应超时 (Dead)") : "⚪ 跳过/无需检测"}
-        </span>
+        <span style="font-weight: bold; color: inherit;">中国移动 (${isUdp ? "ICMP" : "AS9808"})</span>
+        <span style="color: ${operatorMap.cm.color}; font-weight: bold; font-size: 13px;">${operatorMap.cm.status}</span>
       </div>
     </div>
 
-    <!-- 3. 弹窗警告和诊断反馈 -->
-    <div style="background-color: ${statusBg}; color: ${statusText}; border-radius: 8px; padding: 12px; border-left: 5px solid ${statusBorder};">
-      <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px;">${statusTitle}</div>
-      <div style="font-size: 13px; opacity: 0.9;">${diagnosisText}</div>
+    <!-- 协议说明及真机反馈 -->
+    <div style="background-color: rgba(140, 140, 140, 0.03); border-radius: 8px; padding: 12px; border: 1px solid rgba(140, 140, 140, 0.15); margin-bottom: 12px;">
+      <div style="font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">📡 真机测试通路状态</div>
+      <div style="font-size: 13px; color: inherit; opacity: 0.85;">
+        ${isUdp 
+          ? "<b>当前为 UDP 协议：</b>检测到当前节点运行于 <b>Hysteria 2 / TUIC</b> 协议下。此类协议使用 UDP 载荷，本地真机已自动免除 TCP HTTP 发包握手测试（以此避免协议不匹配带来的阻断误报）。" 
+          : `<b>当前为 TCP 协议：</b>本地真机向节点发起的物理直连 TCP 握手：${localTest.reachable ? `<span style="color: #52c41a; font-weight: bold;">成功 (${localTest.ms}ms)</span>` : '<span style="color: #ff4d4f; font-weight: bold;">超时 (Timeout)</span>'}`
+        }
+      </div>
     </div>
 
+    <!-- 诊断结论 -->
+    <div style="background-color: rgba(140, 140, 140, 0.03); border-radius: 8px; padding: 12px; border: 1px solid rgba(140, 140, 140, 0.15);">
+      <div style="font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">📋 综合诊断结论</div>
+      <div style="font-size: 13px; color: inherit; opacity: 0.85;">${diagnosis}</div>
+    </div>
   </div>
   `;
 
   $done({
-    title: "🌐 本地运营商阻断检测",
+    title: "🌐 运营商阻断检测报告",
     content: textReport,
     htmlMessage: htmlReport
   });
