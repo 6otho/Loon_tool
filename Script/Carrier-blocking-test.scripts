@@ -5,7 +5,7 @@
  * 
  * @Author: RavelloH, RuCu6
  * @Modifier: Gemini
- * @Updated: 2026-07-17-b
+ * @Updated: 2026-07-17
  *
  * ===== Loon =====
  * [Script]
@@ -52,7 +52,7 @@ async function run() {
   }
 }
 
-// === 1. Loon 原生内核代理测速 (彻底解决假超时问题) ===
+// === 1. Loon 原生内核代理测速 ===
 function testNativeProxy(targetNodeName) {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -84,7 +84,7 @@ function testNativeProxy(targetNodeName) {
   });
 }
 
-// === 2. 精准城市级地毯式搜寻 (彻底解决探针缺失、深圳无法抓取问题) ===
+// === 2. 极限榨取省内三大运营商机器 (严格遵守 API 10 个 locations 限制) ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -94,23 +94,23 @@ async function runProvinceCheck(info, localRegion, isUdp) {
     target = target.slice(1, -1);
   }
 
-  // 🔥 核心城市映射表：强行按城市名抓取探针，防止省份标签丢失！
+  // 🔥 地毯式城市列表扩充（特别是针对广东隐藏的联通/移动节点）
   const cityMap = {
-    "Guangdong": ["Shenzhen", "Guangzhou", "Dongguan", "Foshan", "Zhanjiang", "Zhuhai"],
-    "Guangxi": ["Nanning", "Liuzhou", "Guilin", "Beihai"],
-    "Fujian": ["Fuzhou", "Xiamen", "Quanzhou", "Putian"],
-    "Zhejiang": ["Hangzhou", "Ningbo", "Wenzhou", "Jinhua", "Shaoxing"],
-    "Jiangsu": ["Nanjing", "Suzhou", "Wuxi", "Changzhou", "Xuzhou", "Nantong"],
-    "Shandong": ["Jinan", "Qingdao", "Yantai", "Weifang"],
-    "Sichuan": ["Chengdu", "Mianyang"],
-    "Hubei": ["Wuhan", "Yichang"],
-    "Hunan": ["Changsha", "Zhuzhou"],
-    "Henan": ["Zhengzhou", "Luoyang"],
-    "Hebei": ["Shijiazhuang", "Baoding", "Tangshan"],
-    "Liaoning": ["Shenyang", "Dalian"],
-    "Anhui": ["Hefei", "Wuhu"],
-    "Jiangxi": ["Nanchang", "Ganzhou", "Jiujiang"],
-    "Shaanxi": ["Xi'an", "Xianyang"],
+    "Guangdong": ["Shenzhen", "Guangzhou", "Dongguan", "Foshan", "Zhuhai", "Zhongshan", "Jiangmen", "Shantou", "Huizhou", "Zhanjiang"],
+    "Guangxi": ["Nanning", "Liuzhou", "Guilin", "Beihai", "Yulin"],
+    "Fujian": ["Fuzhou", "Xiamen", "Quanzhou", "Putian", "Zhangzhou"],
+    "Zhejiang": ["Hangzhou", "Ningbo", "Wenzhou", "Jinhua", "Shaoxing", "Jiaxing", "Taizhou"],
+    "Jiangsu": ["Nanjing", "Suzhou", "Wuxi", "Changzhou", "Xuzhou", "Nantong", "Zhenjiang"],
+    "Shandong": ["Jinan", "Qingdao", "Yantai", "Weifang", "Linyi"],
+    "Sichuan": ["Chengdu", "Mianyang", "Deyang", "Nanchong"],
+    "Hubei": ["Wuhan", "Yichang", "Xiangyang", "Jingzhou"],
+    "Hunan": ["Changsha", "Zhuzhou", "Xiangtan", "Hengyang"],
+    "Henan": ["Zhengzhou", "Luoyang", "Nanyang", "Xinxiang"],
+    "Hebei": ["Shijiazhuang", "Baoding", "Tangshan", "Langfang"],
+    "Liaoning": ["Shenyang", "Dalian", "Anshan"],
+    "Anhui": ["Hefei", "Wuhu", "Bengbu", "Fuyang"],
+    "Jiangxi": ["Nanchang", "Ganzhou", "Jiujiang", "Yichun"],
+    "Shaanxi": ["Xi'an", "Xianyang", "Baoji"],
     "Chongqing": ["Chongqing"],
     "Beijing": ["Beijing"],
     "Shanghai": ["Shanghai"],
@@ -118,19 +118,25 @@ async function runProvinceCheck(info, localRegion, isUdp) {
   };
 
   const locations = [];
-  // 1. 抓取带省份标签的机器
-  locations.push({ "magic": localRegion, "limit": 4 });
   
-  // 2. 强行抓取该省份下各个核心城市的机器（特别是深圳、广州）
+  // 1. 强力指令：强制要求 API 剥离出本省的联通和移动机器 (权重最高)
+  locations.push({ "magic": `China Unicom ${localRegion}`, "limit": 1 });
+  locations.push({ "magic": `China Mobile ${localRegion}`, "limit": 1 });
+  locations.push({ "magic": `China Telecom ${localRegion}`, "limit": 1 });
+  
+  // 2. 基础指令：本省通用查询兜底
+  locations.push({ "magic": localRegion, "limit": 2 });
+
+  // 3. 城市扫街：剩余配额分配给该省的核心城市（严格控制总 length = 10）
   const cities = cityMap[localRegion] || [];
   cities.slice(0, 5).forEach(city => {
-    locations.push({ "magic": city, "limit": 2 }); // 每个大城市强行抓 2 台
+    locations.push({ "magic": city, "limit": 1 });
   });
 
   const body = {
     target: target,
     type: "ping",
-    locations: locations,
+    locations: locations, // 刚好 10 个 location 限制，不会触发 400 报错
     measurementOptions: { packets: 3 }
   };
 
@@ -236,9 +242,9 @@ function escapeHtml(str) { return String(str ?? "").replace(/&/g, "&amp;").repla
 
 function render(localNet, localTest, testResult, isUdp, localRegionEn) {
   const operatorMap = {
-    ct: { name: "电信", status: "🚫 暂无在线机器" },
-    cu: { name: "联通", status: "🚫 暂无在线机器" },
-    cm: { name: "移动", status: "🚫 暂无在线机器" }
+    ct: { name: "电信", status: "🚫 平台暂无本省【电信】机器" },
+    cu: { name: "联通", status: "🚫 平台暂无本省【联通】机器" },
+    cm: { name: "移动", status: "🚫 平台暂无本省【移动】机器" }
   };
 
   // 整理并提取探针数据
@@ -249,7 +255,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
       
       const loss = item.result?.stats?.loss ?? 100;
       const avg = item.result?.stats?.avg ?? null;
-      const city = item.probe.city || "本省"; // 如果真没填城市，至少能显示本省
+      const city = item.probe.city || "本省";
 
       let statusText = loss === 100 || avg === null ? `❌ 阻断 (${city})` : (loss > 0 ? `⚠️ 丢包 ${loss}% (${city})` : `✅ 畅通 (${avg.toFixed(1)}ms - ${city})`);
       
@@ -266,7 +272,6 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     localLocStr = `${localNet.regionName || ""} ${localNet.city || ""}`;
   }
 
-  // 最精简直观的反馈
   let feedbackTitle = localTest.reachable ? "🟢 本地当前网络测试通畅" : "🔴 本地当前网络无法直连";
   let feedbackBg = localTest.reachable ? "#dafbe1" : "#ffebe9";
   let feedbackText = localTest.reachable ? "#1a7f37" : "#cf222e";
@@ -275,9 +280,8 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     ? `该节点在你的 <b>${localIsp}</b> 网络下正常工作，已通过 Loon 原生内核验证。`
     : `该节点在你的 <b>${localIsp}</b> 网络下连接超时，可能已被阻断或节点离线。`;
 
-  // UDP 协议对于外部 ICMP 探针的警告补充
   if (isUdp) {
-    localFeedbackText += "<br/><small style='color: #666; margin-top: 4px; display: block;'>注：此为 UDP(Hy2) 节点。部分节点服务器默认禁 Ping，会导致下方省内探针全亮红灯，<b>请以本地实测结果为准</b>。</small>";
+    localFeedbackText += "<br/><small style='color: #666; margin-top: 4px; display: block;'>注：此为 UDP 协议。部分节点服务端默认禁 Ping，可能导致下方省内探针亮红灯，<b>请以本地实测结果为准</b>。</small>";
   }
 
   const htmlReport = `
