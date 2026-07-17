@@ -5,7 +5,7 @@
  * 
  * @Author: RavelloH, RuCu6
  * @Modifier: Gemini
- * @Updated: 2026-07-17-a
+ * @Updated: 2026-07-17-b
  *
  * ===== Loon =====
  * [Script]
@@ -38,12 +38,12 @@ async function run() {
     const [localNetZh, localNetEn, localTest] = await Promise.all([
       requestJson(`${IP_API}?lang=zh-CN`, "DIRECT").catch(() => null),
       requestJson(IP_API, "DIRECT").catch(() => null),
-      testNativeProxy(nodeName) // <-- 【核心修复点】用真实节点内核测速，不再裸连端口
+      testNativeProxy(nodeName)
     ]);
 
     const localRegionEn = getRegionEn(localNetZh?.regionName, localNetEn?.regionName);
 
-    // 请求省内探针数据
+    // 请求省内与核心城市探针数据
     const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
 
     render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol, localRegionEn);
@@ -52,7 +52,7 @@ async function run() {
   }
 }
 
-// === 1. Loon 原生内核代理测速 (彻底解决 Hy2 等协议假超时问题) ===
+// === 1. Loon 原生内核代理测速 (彻底解决假超时问题) ===
 function testNativeProxy(targetNodeName) {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -65,7 +65,6 @@ function testNativeProxy(targetNodeName) {
       }
     }, 4500);
 
-    // 强行把流量塞进当前选中的节点去访问 204，能通就代表 100% 没阻断
     $httpClient.get({
       url: "http://cp.cloudflare.com/generate_204",
       node: targetNodeName, 
@@ -79,14 +78,13 @@ function testNativeProxy(targetNodeName) {
       if (error || !response) {
         resolve({ reachable: false, error: "不通", ms });
       } else {
-        // 只要有 HTTP 响应，说明底层代理隧道已成功建立
         resolve({ reachable: true, ms });
       }
     });
   });
 }
 
-// === 2. 精准省内探针拉取逻辑 (解决探针不显示问题) ===
+// === 2. 精准城市级地毯式搜寻 (彻底解决探针缺失、深圳无法抓取问题) ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -96,11 +94,43 @@ async function runProvinceCheck(info, localRegion, isUdp) {
     target = target.slice(1, -1);
   }
 
-  // 直接批量拉取本省 10 台机器，拿回来再自己分类，不再受限
+  // 🔥 核心城市映射表：强行按城市名抓取探针，防止省份标签丢失！
+  const cityMap = {
+    "Guangdong": ["Shenzhen", "Guangzhou", "Dongguan", "Foshan", "Zhanjiang", "Zhuhai"],
+    "Guangxi": ["Nanning", "Liuzhou", "Guilin", "Beihai"],
+    "Fujian": ["Fuzhou", "Xiamen", "Quanzhou", "Putian"],
+    "Zhejiang": ["Hangzhou", "Ningbo", "Wenzhou", "Jinhua", "Shaoxing"],
+    "Jiangsu": ["Nanjing", "Suzhou", "Wuxi", "Changzhou", "Xuzhou", "Nantong"],
+    "Shandong": ["Jinan", "Qingdao", "Yantai", "Weifang"],
+    "Sichuan": ["Chengdu", "Mianyang"],
+    "Hubei": ["Wuhan", "Yichang"],
+    "Hunan": ["Changsha", "Zhuzhou"],
+    "Henan": ["Zhengzhou", "Luoyang"],
+    "Hebei": ["Shijiazhuang", "Baoding", "Tangshan"],
+    "Liaoning": ["Shenyang", "Dalian"],
+    "Anhui": ["Hefei", "Wuhu"],
+    "Jiangxi": ["Nanchang", "Ganzhou", "Jiujiang"],
+    "Shaanxi": ["Xi'an", "Xianyang"],
+    "Chongqing": ["Chongqing"],
+    "Beijing": ["Beijing"],
+    "Shanghai": ["Shanghai"],
+    "Tianjin": ["Tianjin"]
+  };
+
+  const locations = [];
+  // 1. 抓取带省份标签的机器
+  locations.push({ "magic": localRegion, "limit": 4 });
+  
+  // 2. 强行抓取该省份下各个核心城市的机器（特别是深圳、广州）
+  const cities = cityMap[localRegion] || [];
+  cities.slice(0, 5).forEach(city => {
+    locations.push({ "magic": city, "limit": 2 }); // 每个大城市强行抓 2 台
+  });
+
   const body = {
     target: target,
     type: "ping",
-    locations: [ { "magic": localRegion, "limit": 10 } ],
+    locations: locations,
     measurementOptions: { packets: 3 }
   };
 
@@ -206,12 +236,12 @@ function escapeHtml(str) { return String(str ?? "").replace(/&/g, "&amp;").repla
 
 function render(localNet, localTest, testResult, isUdp, localRegionEn) {
   const operatorMap = {
-    ct: { name: "电信", status: "🚫 本省无在线机器" },
-    cu: { name: "联通", status: "🚫 本省无在线机器" },
-    cm: { name: "移动", status: "🚫 本省无在线机器" }
+    ct: { name: "电信", status: "🚫 暂无在线机器" },
+    cu: { name: "联通", status: "🚫 暂无在线机器" },
+    cm: { name: "移动", status: "🚫 暂无在线机器" }
   };
 
-  // 整理本省探针
+  // 整理并提取探针数据
   if (testResult && Array.isArray(testResult.results)) {
     testResult.results.forEach((item) => {
       const opKey = classifyOperator(item.probe);
@@ -219,11 +249,11 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
       
       const loss = item.result?.stats?.loss ?? 100;
       const avg = item.result?.stats?.avg ?? null;
-      const city = item.probe.city || "本地";
+      const city = item.probe.city || "本省"; // 如果真没填城市，至少能显示本省
 
       let statusText = loss === 100 || avg === null ? `❌ 阻断 (${city})` : (loss > 0 ? `⚠️ 丢包 ${loss}% (${city})` : `✅ 畅通 (${avg.toFixed(1)}ms - ${city})`);
       
-      // 填入结果 (优选有数据的)
+      // 优选：如果有畅通结果，覆盖之前的阻断/空白结果
       if (operatorMap[opKey].status.startsWith("🚫") || statusText.startsWith("✅")) {
         operatorMap[opKey].status = `<span style="color: ${loss === 100 ? '#ff4d4f' : (loss > 0 ? '#faad14' : '#52c41a')}; font-weight: bold;">${statusText}</span>`;
       }
@@ -266,7 +296,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
 
     <!-- 省内三网情况表 -->
     <div style="border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); overflow: hidden;">
-      <div style="background: rgba(0,0,0,0.04); font-weight: bold; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">🇨🇳 本省拨测情况 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
+      <div style="background: rgba(0,0,0,0.04); font-weight: bold; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">🇨🇳 本省及核心城市拨测 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
       <div style="padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between;">
         <b>本省电信</b> <span style="font-size: 13px;">${operatorMap.ct.status}</span>
       </div>
