@@ -1,0 +1,14 @@
+[Plugin]
+name = 小黑盒签到
+desc = 打开小黑盒App自动获取Token/Cookie，每日定时发起签到。
+author = Custom
+
+[Script]
+# 抓包获取 Cookie / 请求参数
+http-request ^https:\/\/api\.xiaoheihe\.cn\/(account\/home_v2|task\/sign) script-path=https://raw.githubusercontent.com/YourRepo/heybox.js, requires-body=false, tag=小黑盒获取Cookie
+
+# 定时签到（每天 08:30 运行）
+cron "30 8 * * *" script-path=https://raw.githubusercontent.com/YourRepo/heybox.js, tag=小黑盒每日签到
+
+[MITM]
+hostname = api.xiaoheihe.cn
