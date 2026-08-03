@@ -2,7 +2,7 @@
 #!desc = 强制 t.me 网页链接跳转本地客户端。
 
 [Argument]
-client = select,"Ng","swiftgram","turrit",tag=选择目标客户端,desc=tg (适用于 Nagram 和原版 TG)
+client = select,"Nagram","Swiftgram","Turrit",tag=选择目标客户端,desc=tg (适用于 Nagram 和原版 TG)
 
 [URL Rewrite]
 ^https?:\/\/t\.me\/(.+) ${client}://resolve?domain=$1 307
