@@ -1,8 +1,13 @@
-#!name=Nagram跳转
-#!desc=强制t.me链接跳转Nagram(tg://)
+#!name = Telegram 网页链接重定向第三方客户端
+#!desc = 强制 t.me 链接跳转本地 Telegram/Nagram/Swiftgram 等客户端。可在 Loon 插件设置中自由切换调起的软件。
+#!author = Loon
+#!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png
 
-[URL Rewrite]
-^https?:\/\/t\.me\/(.+) tg://resolve?domain=$1 307
+[Argument]
+client = select, "tg://", "swiftgram://", "nicegram://", "ime://", "tgx://", tag = 选择目标客户端, desc = tg:// 为通用协议(支持 Nagram/Nekogram/官方)；其余为各第三方专属协议。
+
+[Rewrite]
+^https?:\/\/t\.me\/(.+) {client}resolve?domain=$1 307
 
 [MITM]
-hostname = %APPEND% t.me
+hostname = t.me
