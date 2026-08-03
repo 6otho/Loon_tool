@@ -1,0 +1,8 @@
+#!name=Nagram跳转
+#!desc=强制t.me链接跳转Nagram(tg://)
+
+[URL Rewrite]
+^https?:\/\/t\.me\/(.+) tg://resolve?domain=$1 307
+
+[MITM]
+hostname = %APPEND% t.me
