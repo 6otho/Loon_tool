@@ -1,11 +1,8 @@
-#!name = Telegram 链接跳转多客户端
-#!desc = 强制 t.me 网页链接跳转本地客户端。
-
-[Argument]
-client = select,"tg","swiftgram","turrit",tag=选择目标客户端,desc=选 tg -> 调起 Nagram / 原版 Telegram | 选 swiftgram -> 调起 Swiftgram | 选 turrit -> 调起 Turrit
+#!name=Nagram跳转
+#!desc=强制t.me链接跳转Nagram
 
 [URL Rewrite]
-^https?:\/\/t\.me\/(.+) ${client}://resolve?domain=$1 307
+^https?://t.me/(.+) tg://resolve?domain=$1 307
 
 [MITM]
 hostname = %APPEND% t.me
