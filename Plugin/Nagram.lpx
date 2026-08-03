@@ -1,13 +1,11 @@
-#!name = Telegram 链接跳转第三方客户端
-#!desc = 强制 t.me 网页链接跳转本地第三方 Telegram 客户端。可在 Loon 插件设置中切换跳转的目标客户端。
-#!author = Loon
-#!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png
+#!name = Telegram 链接跳转多客户端
+#!desc = 强制 t.me 网页链接跳转本地客户端。可在 Loon 设置中直接选择 Nagram、Swiftgram、Turrit 等。
 
 [Argument]
-client = select,"tg","swiftgram","nicegram","ime","tgx",tag=选择目标客户端,desc=tg(适用于 Nagram/Nekogram/官方)；其余为各第三方客户端
+client = select,"Nagram","Swiftgram","Turrit","原版 Telegram",tag=选择目标客户端,desc=直接选择你要调起的客户端名称
 
-[Rewrite]
-^https?:\/\/t\.me\/(.+) ${client}://resolve?domain=$1 307
+[Script]
+http-request ^https?:\/\/t\.me\/(.+) script-path=https://raw.githubusercontent.com/Koolson/Qure/master/Script/Telegram/Telegram_Jump.js,tag=Telegram跳转,argument=[{client}]
 
-[Mitm]
-hostname = t.me
+[MITM]
+hostname = %APPEND% t.me
