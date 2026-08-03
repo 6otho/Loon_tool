@@ -1,11 +1,11 @@
 #!name = Telegram 链接跳转多客户端
-#!desc = 强制 t.me 网页链接跳转本地客户端。可在 Loon 设置中直接选择 Nagram、Swiftgram、Turrit 等。
+#!desc = 强制 t.me 网页链接跳转本地客户端。
 
 [Argument]
-client = select,"Nagram","Swiftgram","Turrit","原版 Telegram",tag=选择目标客户端,desc=直接选择你要调起的客户端名称
+client = select,"tg","swiftgram","turrit",tag=选择目标客户端,desc=tg (适用于 Nagram 和原版 TG)
 
-[Script]
-http-request ^https?:\/\/t\.me\/(.+) script-path=https://raw.githubusercontent.com/Koolson/Qure/master/Script/Telegram/Telegram_Jump.js,tag=Telegram跳转,argument=[{client}]
+[URL Rewrite]
+^https?:\/\/t\.me\/(.+) ${client}://resolve?domain=$1 307
 
 [MITM]
 hostname = %APPEND% t.me
