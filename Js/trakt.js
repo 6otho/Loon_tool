@@ -1,5 +1,5 @@
 /**
- * @name: Trakt & TMDb 官方客户端播放源注入 (Infuse 跳转)
+ * @name: Trakt 官方客户端播放源劫持注入 (修复版)
  * @author: 6otho
  * @repository: https://github.com/6otho/Loon_tool
  */
@@ -14,107 +14,74 @@ let body = $response.body;
     }
 
     try {
-        // ----------------------------------------------------
-        // 场景 1：拦截 Trakt 影视详情，提取并全局缓存片名
-        // ----------------------------------------------------
-        if (url.includes("api.trakt.tv")) {
-            const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
-            const isWatchNow = url.includes("/watchnow");
+        // 1. 拦截影片/剧集详情：捕获片名
+        // 匹配: /movies/xxx 或 /shows/xxx
+        const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
+        const isWatchNow = url.includes("/watchnow");
 
-            if (isDetail && !isWatchNow) {
-                let data = JSON.parse(body);
-                if (data && data.title) {
-                    const mediaInfo = {
-                        title: data.title,
-                        tmdb_id: data.ids?.tmdb || ""
-                    };
-                    $persistentStore.write(JSON.stringify(mediaInfo), "trakt_latest_media");
-                    if (data.ids?.tmdb) {
-                        $persistentStore.write(JSON.stringify(mediaInfo), `trakt_tmdb_${data.ids.tmdb}`);
-                    }
-                }
-                $done({ body });
-                return;
+        if (isDetail && !isWatchNow) {
+            let data = JSON.parse(body);
+            if (data && data.title) {
+                console.log(`[Trakt-Loon] 成功抓取片名: ${data.title}`);
+                $persistentStore.write(data.title, "trakt_active_title");
             }
-
-            // 针对部分使用 Trakt 自有 watchnow 的接口也做兜底注入
-            if (isWatchNow) {
-                let query = getCachedTitle();
-                let data = JSON.parse(body);
-                const customItems = [
-                    {
-                        source: "infuse",
-                        name: "在 Infuse 中播放",
-                        link: `infuse://search?q=${encodeURIComponent(query)}`,
-                        type: "link",
-                        uhd: true
-                    }
-                ];
-
-                if (Array.isArray(data)) {
-                    data = [...customItems, ...data];
-                } else if (typeof data === "object" && data !== null) {
-                    for (const k in data) {
-                        if (Array.isArray(data[k])) data[k] = [...customItems, ...data[k]];
-                    }
-                    if (Object.keys(data).length === 0) data["us"] = customItems;
-                }
-                $done({ body: JSON.stringify(data) });
-                return;
-            }
+            $done({ body });
+            return;
         }
 
-        // ----------------------------------------------------
-        // 场景 2：拦截 Trakt iOS 客户端请求的 TMDb 播放源 (核心)
-        // 接口: api.themoviedb.org/3/movie/{id}/watch/providers
-        // ----------------------------------------------------
-        if (url.includes("api.themoviedb.org") && url.includes("/watch/providers")) {
-            let data = JSON.parse(body);
-            let query = getCachedTitle();
-
-            // 提取当前 TMDb ID
-            const tmdbMatch = url.match(/\/watch\/providers/);
-            if (!query) {
-                const idMatch = url.match(/\/(movie|tv)\/([0-9]+)\/watch\/providers/);
-                if (idMatch) {
-                    const cachedByTmdb = $persistentStore.read(`trakt_tmdb_${idMatch[2]}`);
-                    if (cachedByTmdb) query = JSON.parse(cachedByTmdb).title;
+        // 2. 拦截所有与播放源相关的请求 (包含带国家码和 justwatch_links 的路径)
+        if (isWatchNow) {
+            console.log(`[Trakt-Loon] 命中播放源接口: ${url}`);
+            
+            // 获取片名，若无则从 URL slug 提取
+            let title = $persistentStore.read("trakt_active_title");
+            if (!title) {
+                const match = url.match(/\/(movies|shows)\/([^\/?#]+)/);
+                if (match) {
+                    title = decodeURIComponent(match[2]).replace(/-\d{4}$/, "").replace(/-/g, " ").trim();
                 }
             }
+            title = title || "movie";
+            const infuseUrl = `infuse://search?q=${encodeURIComponent(title)}`;
+            console.log(`[Trakt-Loon] 生成 Infuse 跳转目标: ${infuseUrl}`);
 
-            // 构造注入到 TMDb 播放源的 Infuse 项目
-            const infuseItem = {
-                display_priority: 0,
-                logo_path: "/1Z85L0nO9SvdRjT5h88e2Z0rI1G.jpg", // 官方流媒体通用图标
-                provider_id: 999999,
-                provider_name: "Infuse"
+            let data = JSON.parse(body);
+
+            // 构造合法的伪装播放源（使用 itunes / apple 作为 source，确保客户端必定有图标能渲染）
+            const hijackItem = {
+                source: "itunes", 
+                name: "Infuse 播放",
+                link: infuseUrl,
+                type: "link",
+                uhd: true
             };
 
-            const infuseLink = `infuse://search?q=${encodeURIComponent(query || "movie")}`;
-
-            // 如果整个影视没有任何流媒体源
-            if (!data.results || Object.keys(data.results).length === 0) {
-                data.results = {};
-            }
-
-            // 支持的地区列表：覆盖常见地区确保客户端必定渲染出图标
-            const targetRegions = ["CN", "US", "HK", "TW", "GB", "CA", "AU", "JP"];
-
-            // 遍历并强行塞入 Infuse
-            for (const region of targetRegions) {
-                if (!data.results[region]) {
-                    data.results[region] = {
-                        link: infuseLink,
-                        flatrate: [infuseItem]
-                    };
+            // 策略 A：返回数据是数组格式
+            if (Array.isArray(data)) {
+                // 如果原本就有流媒体源，顺便把现存所有的 link 都改掉，确保点哪个都跳 Infuse
+                data.forEach(item => { item.link = infuseUrl; });
+                // 将伪装的 Infuse 项插在第一位
+                data.unshift(hijackItem);
+            } 
+            // 策略 B：返回数据是按国家分区的对象格式 {"us": [...], ...}
+            else if (typeof data === "object" && data !== null) {
+                const regions = Object.keys(data);
+                if (regions.length === 0) {
+                    // 原本无流媒体数据的影片，强制生成常用地区
+                    data["us"] = [hijackItem];
+                    data["cn"] = [hijackItem];
                 } else {
-                    data.results[region].link = infuseLink;
-                    if (!data.results[region].flatrate) {
-                        data.results[region].flatrate = [];
+                    for (const r of regions) {
+                        if (Array.isArray(data[r])) {
+                            data[r].forEach(item => { item.link = infuseUrl; });
+                            data[r].unshift(hijackItem);
+                        } else {
+                            data[r] = [hijackItem];
+                        }
                     }
-                    // 把 Infuse 插入到播放源的第一个位置
-                    data.results[region].flatrate.unshift(infuseItem);
                 }
+            } else {
+                data = [hijackItem];
             }
 
             $done({ body: JSON.stringify(data) });
@@ -122,16 +89,8 @@ let body = $response.body;
         }
 
         $done({ body });
-    } catch (e) {
+    } catch (err) {
+        console.log(`[Trakt-Loon] 脚本执行报错: ${err}`);
         $done({ body });
-    }
-
-    // 辅助函数：提取缓存的片名
-    function getCachedTitle() {
-        try {
-            const raw = $persistentStore.read("trakt_latest_media");
-            if (raw) return JSON.parse(raw).title || "";
-        } catch (e) {}
-        return "";
     }
 })();
