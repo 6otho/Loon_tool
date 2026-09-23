@@ -1,5 +1,5 @@
 /**
- * @name: Trakt 官方客户端播放源注入 (Infuse / VidHub / SenPlayer / Fileball)
+ * @name: Trakt & TMDb 官方客户端播放源注入 (Infuse 跳转)
  * @author: 6otho
  * @repository: https://github.com/6otho/Loon_tool
  */
@@ -14,119 +14,107 @@ let body = $response.body;
     }
 
     try {
-        const isWatchNow = url.includes("/watchnow");
-        const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
+        // ----------------------------------------------------
+        // 场景 1：拦截 Trakt 影视详情，提取并全局缓存片名
+        // ----------------------------------------------------
+        if (url.includes("api.trakt.tv")) {
+            const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
+            const isWatchNow = url.includes("/watchnow");
 
-        // 1. 拦截影视详情页：提取片名并建立精确缓存
-        if (isDetail && !isWatchNow) {
-            let data = JSON.parse(body);
-            if (data && data.title) {
-                const mediaInfo = {
-                    title: data.title,
-                    year: data.year || "",
-                    imdb: data.ids?.imdb || ""
-                };
-                const jsonStr = JSON.stringify(mediaInfo);
-                // 全局最新缓存
-                $persistentStore.write(jsonStr, "trakt_latest_media");
-                // 精准 Slug 与 ID 缓存
-                if (data.ids?.slug) {
-                    $persistentStore.write(jsonStr, `trakt_media_${data.ids.slug}`);
-                }
-                if (data.ids?.trakt) {
-                    $persistentStore.write(jsonStr, `trakt_media_${data.ids.trakt}`);
-                }
-            }
-            $done({ body });
-            return;
-        }
-
-        // 2. 拦截“Where to Watch / 播放源”接口：注入播放器跳转
-        if (isWatchNow) {
-            const match = url.match(/https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)/);
-            const idOrSlug = match ? match[2] : null;
-
-            let media = null;
-            // 优先读取精准缓存
-            if (idOrSlug) {
-                const specific = $persistentStore.read(`trakt_media_${idOrSlug}`);
-                if (specific) {
-                    try { media = JSON.parse(specific); } catch (e) {}
-                }
-            }
-            // 次选读取最近浏览缓存
-            if (!media) {
-                const latest = $persistentStore.read("trakt_latest_media");
-                if (latest) {
-                    try { media = JSON.parse(latest); } catch (e) {}
-                }
-            }
-
-            // 容错处理：若缓存未命中，直接从 URL 中的 slug 还原片名
-            let query = (media && media.title) ? media.title : "";
-            if (!query && idOrSlug) {
-                query = decodeURIComponent(idOrSlug).replace(/-\d{4}$/, "").replace(/-/g, " ").trim();
-            }
-
-            // 构造注入的播放器列表（自带 Infuse、VidHub、SenPlayer、Fileball）
-            const customItems = [
-                {
-                    source: "infuse",
-                    name: "Infuse 搜索",
-                    link: `infuse://search?q=${encodeURIComponent(query)}`,
-                    type: "link",
-                    uhd: true
-                },
-                {
-                    source: "vidhub",
-                    name: "VidHub 搜索",
-                    link: `vidhub://search?query=${encodeURIComponent(query)}`,
-                    type: "link",
-                    uhd: true
-                },
-                {
-                    source: "senplayer",
-                    name: "SenPlayer 搜索",
-                    link: `senplayer://search?keyword=${encodeURIComponent(query)}`,
-                    type: "link",
-                    uhd: true
-                },
-                {
-                    source: "fileball",
-                    name: "Fileball 搜索",
-                    link: `fileball://search?query=${encodeURIComponent(query)}`,
-                    type: "link",
-                    uhd: true
-                }
-            ];
-
-            let data;
-            try {
-                data = JSON.parse(body);
-            } catch (e) {
-                data = {};
-            }
-
-            // 兼容 Trakt API 的不同数据格式（数组、国家键值对象或空对象）
-            if (Array.isArray(data)) {
-                data = [...customItems, ...data];
-            } else if (typeof data === "object" && data !== null) {
-                const keys = Object.keys(data);
-                // 若 Trakt 原本无流媒体源（空对象），补全常见地区以保证按钮正常渲染
-                if (keys.length === 0) {
-                    data["us"] = customItems;
-                    data["cn"] = customItems;
-                } else {
-                    for (const k of keys) {
-                        if (Array.isArray(data[k])) {
-                            data[k] = [...customItems, ...data[k]];
-                        } else {
-                            data[k] = customItems;
-                        }
+            if (isDetail && !isWatchNow) {
+                let data = JSON.parse(body);
+                if (data && data.title) {
+                    const mediaInfo = {
+                        title: data.title,
+                        tmdb_id: data.ids?.tmdb || ""
+                    };
+                    $persistentStore.write(JSON.stringify(mediaInfo), "trakt_latest_media");
+                    if (data.ids?.tmdb) {
+                        $persistentStore.write(JSON.stringify(mediaInfo), `trakt_tmdb_${data.ids.tmdb}`);
                     }
                 }
-            } else {
-                data = customItems;
+                $done({ body });
+                return;
+            }
+
+            // 针对部分使用 Trakt 自有 watchnow 的接口也做兜底注入
+            if (isWatchNow) {
+                let query = getCachedTitle();
+                let data = JSON.parse(body);
+                const customItems = [
+                    {
+                        source: "infuse",
+                        name: "在 Infuse 中播放",
+                        link: `infuse://search?q=${encodeURIComponent(query)}`,
+                        type: "link",
+                        uhd: true
+                    }
+                ];
+
+                if (Array.isArray(data)) {
+                    data = [...customItems, ...data];
+                } else if (typeof data === "object" && data !== null) {
+                    for (const k in data) {
+                        if (Array.isArray(data[k])) data[k] = [...customItems, ...data[k]];
+                    }
+                    if (Object.keys(data).length === 0) data["us"] = customItems;
+                }
+                $done({ body: JSON.stringify(data) });
+                return;
+            }
+        }
+
+        // ----------------------------------------------------
+        // 场景 2：拦截 Trakt iOS 客户端请求的 TMDb 播放源 (核心)
+        // 接口: api.themoviedb.org/3/movie/{id}/watch/providers
+        // ----------------------------------------------------
+        if (url.includes("api.themoviedb.org") && url.includes("/watch/providers")) {
+            let data = JSON.parse(body);
+            let query = getCachedTitle();
+
+            // 提取当前 TMDb ID
+            const tmdbMatch = url.match(/\/watch\/providers/);
+            if (!query) {
+                const idMatch = url.match(/\/(movie|tv)\/([0-9]+)\/watch\/providers/);
+                if (idMatch) {
+                    const cachedByTmdb = $persistentStore.read(`trakt_tmdb_${idMatch[2]}`);
+                    if (cachedByTmdb) query = JSON.parse(cachedByTmdb).title;
+                }
+            }
+
+            // 构造注入到 TMDb 播放源的 Infuse 项目
+            const infuseItem = {
+                display_priority: 0,
+                logo_path: "/1Z85L0nO9SvdRjT5h88e2Z0rI1G.jpg", // 官方流媒体通用图标
+                provider_id: 999999,
+                provider_name: "Infuse"
+            };
+
+            const infuseLink = `infuse://search?q=${encodeURIComponent(query || "movie")}`;
+
+            // 如果整个影视没有任何流媒体源
+            if (!data.results || Object.keys(data.results).length === 0) {
+                data.results = {};
+            }
+
+            // 支持的地区列表：覆盖常见地区确保客户端必定渲染出图标
+            const targetRegions = ["CN", "US", "HK", "TW", "GB", "CA", "AU", "JP"];
+
+            // 遍历并强行塞入 Infuse
+            for (const region of targetRegions) {
+                if (!data.results[region]) {
+                    data.results[region] = {
+                        link: infuseLink,
+                        flatrate: [infuseItem]
+                    };
+                } else {
+                    data.results[region].link = infuseLink;
+                    if (!data.results[region].flatrate) {
+                        data.results[region].flatrate = [];
+                    }
+                    // 把 Infuse 插入到播放源的第一个位置
+                    data.results[region].flatrate.unshift(infuseItem);
+                }
             }
 
             $done({ body: JSON.stringify(data) });
@@ -134,7 +122,16 @@ let body = $response.body;
         }
 
         $done({ body });
-    } catch (err) {
+    } catch (e) {
         $done({ body });
+    }
+
+    // 辅助函数：提取缓存的片名
+    function getCachedTitle() {
+        try {
+            const raw = $persistentStore.read("trakt_latest_media");
+            if (raw) return JSON.parse(raw).title || "";
+        } catch (e) {}
+        return "";
     }
 })();
