@@ -1,6 +1,9 @@
 /**
- * Trakt 客户端播放渠道劫持脚本
+ * @name: Trakt 官方客户端播放源注入 (Infuse / VidHub / SenPlayer / Fileball)
+ * @author: 6otho
+ * @repository: https://github.com/6otho/Loon_tool
  */
+
 const url = $request.url;
 let body = $response.body;
 
@@ -11,38 +14,61 @@ let body = $response.body;
     }
 
     try {
-        let data = JSON.parse(body);
+        const isWatchNow = url.includes("/watchnow");
+        const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
 
-        // 1. 匹配影视详情接口：提取片名并缓存
-        // 示例: https://api.trakt.tv/movies/avatar-the-way-of-water-2022
-        const isDetail = url.match(/^https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/);
-        if (isDetail && !url.includes("/watchnow") && data.title) {
-            const cache = {
-                title: data.title,
-                year: data.year || ""
-            };
-            $persistentStore.write(JSON.stringify(cache), "trakt_latest_title");
+        // 1. 拦截影视详情页：提取片名并建立精确缓存
+        if (isDetail && !isWatchNow) {
+            let data = JSON.parse(body);
+            if (data && data.title) {
+                const mediaInfo = {
+                    title: data.title,
+                    year: data.year || "",
+                    imdb: data.ids?.imdb || ""
+                };
+                const jsonStr = JSON.stringify(mediaInfo);
+                // 全局最新缓存
+                $persistentStore.write(jsonStr, "trakt_latest_media");
+                // 精准 Slug 与 ID 缓存
+                if (data.ids?.slug) {
+                    $persistentStore.write(jsonStr, `trakt_media_${data.ids.slug}`);
+                }
+                if (data.ids?.trakt) {
+                    $persistentStore.write(jsonStr, `trakt_media_${data.ids.trakt}`);
+                }
+            }
             $done({ body });
             return;
         }
 
-        // 2. 匹配播放源/流媒体提供商接口：注入 Infuse / VidHub 播放源
-        // 示例: https://api.trakt.tv/movies/12345/watchnow
-        const isWatchNow = url.match(/^https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)\/watchnow/);
+        // 2. 拦截“Where to Watch / 播放源”接口：注入播放器跳转
         if (isWatchNow) {
-            // 获取缓存的片名，如果没取到则提取 URL 中的 slug 替代
-            let query = "";
-            const cacheStr = $persistentStore.read("trakt_latest_title");
-            if (cacheStr) {
-                try {
-                    query = JSON.parse(cacheStr).title;
-                } catch (e) {}
+            const match = url.match(/https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)/);
+            const idOrSlug = match ? match[2] : null;
+
+            let media = null;
+            // 优先读取精准缓存
+            if (idOrSlug) {
+                const specific = $persistentStore.read(`trakt_media_${idOrSlug}`);
+                if (specific) {
+                    try { media = JSON.parse(specific); } catch (e) {}
+                }
             }
-            if (!query) {
-                query = decodeURIComponent(isWatchNow[2]).replace(/-/g, " ");
+            // 次选读取最近浏览缓存
+            if (!media) {
+                const latest = $persistentStore.read("trakt_latest_media");
+                if (latest) {
+                    try { media = JSON.parse(latest); } catch (e) {}
+                }
             }
 
-            // 构造需要注入的播放器源 (App 会原生渲染并在点击时唤起 URL Scheme)
+            // 容错处理：若缓存未命中，直接从 URL 中的 slug 还原片名
+            let query = (media && media.title) ? media.title : "";
+            if (!query && idOrSlug) {
+                query = decodeURIComponent(idOrSlug).replace(/-\d{4}$/, "").replace(/-/g, " ").trim();
+            }
+
+            // 构造注入的播放器列表（自带 Infuse、VidHub、SenPlayer、Fileball）
             const customItems = [
                 {
                     source: "infuse",
@@ -57,24 +83,50 @@ let body = $response.body;
                     link: `vidhub://search?query=${encodeURIComponent(query)}`,
                     type: "link",
                     uhd: true
+                },
+                {
+                    source: "senplayer",
+                    name: "SenPlayer 搜索",
+                    link: `senplayer://search?keyword=${encodeURIComponent(query)}`,
+                    type: "link",
+                    uhd: true
+                },
+                {
+                    source: "fileball",
+                    name: "Fileball 搜索",
+                    link: `fileball://search?query=${encodeURIComponent(query)}`,
+                    type: "link",
+                    uhd: true
                 }
             ];
 
-            // Trakt API 返回格式可能直接是数组，也可能是按国家码分区的对象
+            let data;
+            try {
+                data = JSON.parse(body);
+            } catch (e) {
+                data = {};
+            }
+
+            // 兼容 Trakt API 的不同数据格式（数组、国家键值对象或空对象）
             if (Array.isArray(data)) {
                 data = [...customItems, ...data];
             } else if (typeof data === "object" && data !== null) {
-                let hasKey = false;
-                for (const key in data) {
-                    if (Array.isArray(data[key])) {
-                        data[key] = [...customItems, ...data[key]];
-                        hasKey = true;
+                const keys = Object.keys(data);
+                // 若 Trakt 原本无流媒体源（空对象），补全常见地区以保证按钮正常渲染
+                if (keys.length === 0) {
+                    data["us"] = customItems;
+                    data["cn"] = customItems;
+                } else {
+                    for (const k of keys) {
+                        if (Array.isArray(data[k])) {
+                            data[k] = [...customItems, ...data[k]];
+                        } else {
+                            data[k] = customItems;
+                        }
                     }
                 }
-                // 如果当前所在地区没有流媒体商（空列表），强制补一个默认区域
-                if (!hasKey || Object.keys(data).length === 0) {
-                    data["us"] = customItems;
-                }
+            } else {
+                data = customItems;
             }
 
             $done({ body: JSON.stringify(data) });
