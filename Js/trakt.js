@@ -1,7 +1,6 @@
 /**
- * @name: Trakt 官方客户端播放源劫持注入 (修复版)
+ * @name: Trakt 详情页简介注入播放器跳转按钮 (Markdown 方案)
  * @author: 6otho
- * @repository: https://github.com/6otho/Loon_tool
  */
 
 const url = $request.url;
@@ -14,83 +13,40 @@ let body = $response.body;
     }
 
     try {
-        // 1. 拦截影片/剧集详情：捕获片名
-        // 匹配: /movies/xxx 或 /shows/xxx
-        const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)(\?.*)?$/.test(url);
-        const isWatchNow = url.includes("/watchnow");
+        // 匹配 Trakt 电影与剧集详情请求 (兼容 ?extended=full 等各种参数)
+        const isDetail = /https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+)/.test(url);
+        const isExcluded = url.includes("/watchnow") || url.includes("/comments") || url.includes("/ratings") || url.includes("/stats");
 
-        if (isDetail && !isWatchNow) {
+        if (isDetail && !isExcluded) {
             let data = JSON.parse(body);
+
             if (data && data.title) {
-                console.log(`[Trakt-Loon] 成功抓取片名: ${data.title}`);
-                $persistentStore.write(data.title, "trakt_active_title");
-            }
-            $done({ body });
-            return;
-        }
+                const title = data.title;
+                const encodedTitle = encodeURIComponent(title);
 
-        // 2. 拦截所有与播放源相关的请求 (包含带国家码和 justwatch_links 的路径)
-        if (isWatchNow) {
-            console.log(`[Trakt-Loon] 命中播放源接口: ${url}`);
-            
-            // 获取片名，若无则从 URL slug 提取
-            let title = $persistentStore.read("trakt_active_title");
-            if (!title) {
-                const match = url.match(/\/(movies|shows)\/([^\/?#]+)/);
-                if (match) {
-                    title = decodeURIComponent(match[2]).replace(/-\d{4}$/, "").replace(/-/g, " ").trim();
-                }
-            }
-            title = title || "movie";
-            const infuseUrl = `infuse://search?q=${encodeURIComponent(title)}`;
-            console.log(`[Trakt-Loon] 生成 Infuse 跳转目标: ${infuseUrl}`);
+                // 构造 Markdown 格式的快捷跳转按钮
+                const buttons = [
+                    `[▶️ Infuse](infuse://search?q=${encodedTitle})`,
+                    `[VidHub](vidhub://search?query=${encodedTitle})`,
+                    `[Forward](forward://search?query=${encodedTitle})`
+                ].join("  |  ");
 
-            let data = JSON.parse(body);
+                const jumpBlock = `\n\n🎬 快捷播放：\n${buttons}`;
 
-            // 构造合法的伪装播放源（使用 itunes / apple 作为 source，确保客户端必定有图标能渲染）
-            const hijackItem = {
-                source: "itunes", 
-                name: "Infuse 播放",
-                link: infuseUrl,
-                type: "link",
-                uhd: true
-            };
-
-            // 策略 A：返回数据是数组格式
-            if (Array.isArray(data)) {
-                // 如果原本就有流媒体源，顺便把现存所有的 link 都改掉，确保点哪个都跳 Infuse
-                data.forEach(item => { item.link = infuseUrl; });
-                // 将伪装的 Infuse 项插在第一位
-                data.unshift(hijackItem);
-            } 
-            // 策略 B：返回数据是按国家分区的对象格式 {"us": [...], ...}
-            else if (typeof data === "object" && data !== null) {
-                const regions = Object.keys(data);
-                if (regions.length === 0) {
-                    // 原本无流媒体数据的影片，强制生成常用地区
-                    data["us"] = [hijackItem];
-                    data["cn"] = [hijackItem];
+                // 直接追加在影视简介（overview）的最后
+                if (data.overview) {
+                    data.overview = data.overview + jumpBlock;
                 } else {
-                    for (const r of regions) {
-                        if (Array.isArray(data[r])) {
-                            data[r].forEach(item => { item.link = infuseUrl; });
-                            data[r].unshift(hijackItem);
-                        } else {
-                            data[r] = [hijackItem];
-                        }
-                    }
+                    data.overview = jumpBlock;
                 }
-            } else {
-                data = [hijackItem];
-            }
 
-            $done({ body: JSON.stringify(data) });
-            return;
+                $done({ body: JSON.stringify(data) });
+                return;
+            }
         }
 
         $done({ body });
-    } catch (err) {
-        console.log(`[Trakt-Loon] 脚本执行报错: ${err}`);
+    } catch (e) {
         $done({ body });
     }
 })();
