@@ -1,19 +1,14 @@
-#!name = Trakt 播放器跳转
-#!desc = 在 Trakt 官方客户端的“播放渠道 (Where to Watch)”中原生注入 Infuse 播放器跳转；点击插件图标可直达 Infuse。
-#!openUrl = infuse://
+#!name = Trakt 客户端注入 Infuse
+#!desc = 在 Trakt iOS 客户端详情页底部的“Where to Watch / 播放源”中强行显示 Infuse，点击直达播放器搜索。
 #!author = 6otho
 #!tag = 影视增强
 #!loon_version = 3.2.1
 #!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Trakt.png
-#!date = 2026-09-23 20:15:00
-
-[Argument]
-# 在 Loon 插件配置面板中可自由选择首选播放器
-player = select, "Infuse", "VidHub", "SenPlayer", "Fileball", tag = 首选播放器, desc = 设置在 Trakt 中排在首位的播放器
+#!date = 2026-09-23 20:30:00
 
 [Script]
-# 拦截 Trakt 的影视详情与播放源接口（注入 Infuse 等播放器）
-http-response ^https?:\/\/api\.trakt\.tv\/(movies|shows)\/([^\/?#]+) requires-body=true, max-size=0, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/trakt.js, argument=[{player}], tag=Trakt播放源注入
+# 同时拦截 Trakt 详情接口（取片名）与 TMDb 播放源接口（注入播放按钮）
+http-response ^https?:\/\/(api\.trakt\.tv\/(movies|shows)\/|api\.themoviedb\.org\/3\/(movie|tv)\/[0-9]+\/watch\/providers) requires-body=true, max-size=0, script-path=https://raw.githubusercontent.com/6otho/Loon_tool/refs/heads/main/Js/trakt.js, tag=Trakt注入Infuse
 
 [Mitm]
-hostname = api.trakt.tv
+hostname = api.trakt.tv, api.themoviedb.org
