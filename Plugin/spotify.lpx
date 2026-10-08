@@ -9,15 +9,19 @@
 [Argument]
 appid=input,tag=百度appid,desc=此处填写百度appid
 securityKey=input,tag=百度密钥,desc=此处填写百度密钥
-notify=switch,false,tag=通知开关,desc=是否开启翻译提示通知（默认关闭）
 
 [Rule]
+# 1. 强制将百度翻译接口走本地直连，解决海外节点超时问题
+DOMAIN, api.fanyi.baidu.com, DIRECT
+DOMAIN, fanyi-api.baidu.com, DIRECT
+# 2. 原插件的QUIC拦截规则
 AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=10,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js,argument=[{appid},{securityKey},{notify}]
+# 将 timeout 由原来的 10 秒适当放宽到 25 秒，避免整首歌词文本过长时响应不及时
+http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=25,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js,argument=[{appid},{securityKey}]
 
 [MITM]
 hostname = *.spotify.com
