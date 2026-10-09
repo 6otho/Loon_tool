@@ -1,4 +1,4 @@
-// WeTalk_GetCookie.js (智能判定：新账号入库 / 老账号更新识别 + 5秒通知防抖)
+// WeTalk_GetCookie.js (自愈去重 + 幽灵账号自动清理 + 真实序号校准)
 const scriptName = 'WeTalk Cookie获取';
 const storeKey = 'wetalk_accounts_v1';
 
@@ -22,7 +22,7 @@ function notify(title, subtitle, body) {
     if (isQX) $notify(String(title), String(subtitle), String(body));
 }
 
-// 5 秒防抖：避免 App 连续请求导致同一个账号瞬间连弹多次通知
+// 5秒防抖
 function isDebounced(identifier, intervalMs = 5000) {
     const now = Date.now();
     const lastKey = `wetalk_cookie_notify_${identifier}`;
@@ -72,6 +72,47 @@ function saveStore(store) {
     writeVal(JSON.stringify(store), storeKey);
 }
 
+// ⭐️ 核心自愈函数：彻底清除老版本留下的 12 位 MD5 幽灵账号，确保序号真实不虚标
+function cleanAndNormalizeStore(store) {
+    const cleanAccounts = {};
+    const cleanOrder = [];
+    const seenEmails = new Set();
+
+    const allKeys = Array.from(new Set([...(store.order || []), ...Object.keys(store.accounts || {})]));
+
+    for (const key of allKeys) {
+        const acc = store.accounts[key];
+        if (!acc) continue;
+
+        // 提取并强行归一化邮箱 (小写 + 解码)
+        let email = '';
+        if (acc.capture && acc.capture.paramsRaw && acc.capture.paramsRaw.email) {
+            try { email = decodeURIComponent(acc.capture.paramsRaw.email).trim().toLowerCase(); } catch (e) {}
+        }
+        if (!email && acc.alias && acc.alias.includes('@')) {
+            email = acc.alias.trim().toLowerCase();
+        }
+        if (!email && key && key.includes('@')) {
+            email = key.trim().toLowerCase();
+        }
+
+        // 过滤：如果这个账号既没有邮箱也不是有效账号（纯旧版幽灵哈希），直接彻底丢弃！
+        if (!email || email.length < 5) continue;
+
+        if (!seenEmails.has(email)) {
+            seenEmails.add(email);
+            acc.id = email;
+            acc.alias = email;
+            cleanAccounts[email] = acc;
+            cleanOrder.push(email);
+        }
+    }
+
+    store.accounts = cleanAccounts;
+    store.order = cleanOrder;
+    return store;
+}
+
 // ================= 主逻辑 =================
 try {
     if (typeof $request !== 'undefined' && $request.url) {
@@ -83,61 +124,64 @@ try {
             if (k.toLowerCase() === 'user-agent') baseUA = headersMap[k]; 
         });
 
-        // 判定 1：提取账号核心标识（优先邮箱，其次 ID / 手机号）
+        // 1. 强行提取并归一化邮箱
         let rawEmail = paramsRaw['email'] || '';
-        let rawUid = paramsRaw['userId'] || paramsRaw['uid'] || paramsRaw['phone'] || paramsRaw['account'] || '';
-        
         let email = '';
-        try { email = rawEmail ? decodeURIComponent(rawEmail).trim() : ''; } catch (e) { email = rawEmail; }
-        let uid = '';
-        try { uid = rawUid ? decodeURIComponent(rawUid).trim() : ''; } catch (e) { uid = rawUid; }
+        try { 
+            email = rawEmail ? decodeURIComponent(rawEmail).trim().toLowerCase() : ''; 
+        } catch (e) { 
+            email = rawEmail.toLowerCase(); 
+        }
 
-        let userIdentifier = email || uid;
-
-        // 判定 2：未登录空请求直接过滤丢弃
-        if (!userIdentifier || userIdentifier === 'undefined' || userIdentifier === 'null') {
-            console.log(`[${scriptName}] ⚠️ 捕获到请求，但未检测到登录邮箱或用户ID，已自动跳过`);
+        // 如果不是有效邮箱直接跳过
+        if (!email || !email.includes('@')) {
             $done({});
             return;
         }
 
-        const store = loadStore();
+        let store = loadStore();
+        // ⭐️ 每次捕获前先自动自愈清理一次，干掉之前堆积的所有幽灵垃圾数据
+        store = cleanAndNormalizeStore(store);
+
         const now = Date.now();
-        const fp = userIdentifier; // 唯一主键
-        const existed = !!store.accounts[fp];
+        const existed = !!store.accounts[email];
 
-        // 判定 3：账号已存在（老账号更新）
         if (existed) {
-            const oldAcc = store.accounts[fp];
-            const accIndex = store.order.indexOf(fp) + 1;
-
-            store.accounts[fp] = {
-                id: fp,
-                alias: userIdentifier,
-                uaSeed: oldAcc.uaSeed !== undefined ? oldAcc.uaSeed : store.order.indexOf(fp),
+            const oldAcc = store.accounts[email];
+            store.accounts[email] = {
+                id: email,
+                alias: email,
+                uaSeed: oldAcc.uaSeed !== undefined ? oldAcc.uaSeed : store.order.indexOf(email),
                 baseUA: baseUA || oldAcc.baseUA,
                 capture: { url: $request.url, paramsRaw, headers: headersMap },
                 createdAt: oldAcc.createdAt || now,
                 updatedAt: now
             };
+
+            // 重新校准绝对序号
+            if (!store.order.includes(email)) {
+                store.order.push(email);
+            }
             saveStore(store);
 
-            console.log(`[${scriptName}] 🔄 账号已存在: ${userIdentifier} (序号: ${accIndex}/${store.order.length})，数据已刷新`);
+            const accIndex = store.order.indexOf(email) + 1;
+            const total = store.order.length;
 
-            if (!isDebounced(fp, 5000)) {
+            console.log(`[${scriptName}] 🔄 账号已存在: ${email} (实际序号: ${accIndex}/${total})`);
+
+            if (!isDebounced(email, 5000)) {
                 notify(
                     `${scriptName} 🔄 账号已存在`,
-                    `邮箱/账号: ${userIdentifier}`,
-                    `📌 序号: 第 ${accIndex} 个账号 (库中共 ${store.order.length} 个)\n✅ Token 与 Cookie 凭证已静默更新完成！`
+                    `邮箱: ${email}`,
+                    `📌 真实序号: 第 ${accIndex} 个 (共 ${total} 个有效账号)\n✅ Token 凭证已静默更新！`
                 );
             }
-        } 
-        // 判定 4：全新账号入库
-        else {
-            store.order.push(fp);
-            store.accounts[fp] = {
-                id: fp,
-                alias: userIdentifier,
+        } else {
+            // 新账号
+            store.order.push(email);
+            store.accounts[email] = {
+                id: email,
+                alias: email,
                 uaSeed: store.order.length - 1,
                 baseUA,
                 capture: { url: $request.url, paramsRaw, headers: headersMap },
@@ -146,13 +190,15 @@ try {
             };
             saveStore(store);
 
-            const newTotal = store.order.length;
-            console.log(`[${scriptName}] 🎉 新增账号成功: ${userIdentifier} (总账号数: ${newTotal})`);
+            const accIndex = store.order.length;
+            const total = store.order.length;
+
+            console.log(`[${scriptName}] 🎉 新增有效账号: ${email} (真实序号: ${accIndex}/${total})`);
 
             notify(
                 `${scriptName} 🎉 发现新账号`,
-                `邮箱/账号: ${userIdentifier}`,
-                `✅ 账号已成功录入本地库！\n📊 当前库中共有 ${newTotal} 个有效账号`
+                `邮箱: ${email}`,
+                `✅ 账号已录入！\n📊 真实库中共有 ${total} 个有效账号`
             );
         }
     }
