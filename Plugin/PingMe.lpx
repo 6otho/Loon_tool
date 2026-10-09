@@ -1,0 +1,39 @@
+#!name = PingMe 自动助手
+#!desc = 自动签到/刷视频、获取Cookie、免卸载登录与防注销保号。(适配 Loon 3.5.1+ 新语法)
+#!author = 6otho
+#!tag = 签到, 实用工具
+#!system = iOS, iPadOS, macOS
+#!loon_version = 3.5.1(983)
+#!type = normal
+
+[Argument]
+# 1. 动态签到时间 (5段 Cron 表达式：分 时 日 月 周)
+cron_time = input,"30 8 * * *",tag=定时签到时间,desc=例如每天 08:30 执行一次
+# 2. 签到脚本参数 ($argument)
+task_arg = input,"23:50",tag=任务参数,desc=支持填结算时间(如 23:50)；填: 结算 则强制结算；或填指定邮箱
+# 3. Cookie 抓取开关
+enable_cookie = switch,true,tag=开启Cookie捕获,desc=录入账号完毕后建议关闭此开关
+
+[Mitm]
+hostname = api.pingmeapp.net
+
+[Script]
+# —————————————————————————————————————————————
+# 1. 抓取 Cookie 与账号参数
+# —————————————————————————————————————————————
+request if ${enable_cookie} == true && ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:queryBalanceAndBonus|checkIn)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_GetCookie.js") with tag="PingMe-获取Cookie", timeout=15, requires_body=true
+
+# —————————————————————————————————————————————
+# 2. 登录解锁（免卸载设备伪装）与 拦截注销（退出保号）
+# —————————————————————————————————————————————
+request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/(?:api\/|v1\/|user\/|account\/)?(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp|auth\/)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_UnlockLogin.js") with tag="PingMe-解锁登录与拦截退出", timeout=20, requires_body=true
+
+# —————————————————————————————————————————————
+# 3. 定时自动签到任务 (动态 Cron)
+# —————————————————————————————————————————————
+cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", "${task_arg}") with tag="PingMe-每日自动签到", timeout=300
+
+# —————————————————————————————————————————————
+# 4. 手动一键执行面板 (可直接在 Loon 插件/脚本列表点按测试)
+# —————————————————————————————————————————————
+generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", "${task_arg}") with tag="PingMe-手动立即签到", img_url="checkmark.seal", timeout=300
