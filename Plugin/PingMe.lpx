@@ -25,9 +25,9 @@ hostname = api.pingmeapp.net
 request if ${enable_cookie} == true && ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:queryBalanceAndBonus|checkIn)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_GetCookie.js") with tag="PingMe-获取Cookie", timeout=15, requires_body=true
 
 # —————————————————————————————————————————————
-# 2. 登录解锁与拦截退出 (收敛精准正则，解决重复触发任务问题)
+# 2. 登录解锁与拦截退出 (严格限定只在退出和登录发码时介入，日常启动绝不干扰)
 # —————————————————————————————————————————————
-request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp|getRegisBonus|auth)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_UnlockLogin.js") with tag="PingMe-解锁登录与拦截退出", timeout=20, requires_body=true
+request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_UnlockLogin.js") with tag="PingMe-解锁登录与拦截退出", timeout=20, requires_body=true
 
 # —————————————————————————————————————————————
 # 3. 定时自动签到任务 (动态 Cron + 动态参数注入 + 1000s 超时)
