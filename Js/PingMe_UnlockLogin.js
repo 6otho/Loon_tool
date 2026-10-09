@@ -1,4 +1,4 @@
-// PingMe_UnlockLogin.js (防刷屏防抖 + 精准篡改 uniquedeviceid)
+// PingMe_UnlockLogin.js (精准分流：日常启动静默，仅登录/退出才通知)
 const SECRET = '0fOiukQq7jXZV2GRi9LGlO';
 const APP_NAME = 'PingMe';
 
@@ -83,7 +83,6 @@ function randomUUID() {
     });
 }
 
-// ⭐️ 通知防抖逻辑：5 秒内相同的通知类型只发一次，绝不连发
 function sendDebouncedNotification(type, title, subtitle, body) {
     var now = Date.now();
     var lastTimeKey = 'pingme_last_notify_' + type;
@@ -94,10 +93,7 @@ function sendDebouncedNotification(type, title, subtitle, body) {
         }
     } catch (e) {}
 
-    if (now - lastTime < 5000) {
-        console.log(`[${APP_NAME}] 触发过于频繁，已自动抑制重复弹窗 (${type})`);
-        return;
-    }
+    if (now - lastTime < 5000) return;
 
     try {
         if (typeof $persistentStore !== 'undefined') {
@@ -135,12 +131,45 @@ function buildRawQuery(params) {
     return parts.join('&');
 }
 
+// 统一设备伪造与重算签名逻辑
+function spoofDeviceAndResign(url) {
+    var qmarkIdx = url.indexOf('?');
+    var baseUrl = (qmarkIdx !== -1) ? url.substring(0, qmarkIdx) : url;
+    var params = qmarkIdx !== -1 ? parseRawQuery(url.substring(qmarkIdx + 1)) : {};
+
+    var newUUID = randomUUID();
+    var deviceKeys = ['uniquedeviceid', 'deviceId', 'device_id', 'uuid', 'mac', 'hardwareId'];
+    var hasModified = false;
+
+    for (var i = 0; i < deviceKeys.length; i++) {
+        var k = deviceKeys[i];
+        if (params[k] !== undefined) {
+            params[k] = (k === 'uniquedeviceid') ? (newUUID + 'PingMeIOS') : newUUID;
+            hasModified = true;
+        }
+    }
+
+    if (!hasModified) {
+        params['uniquedeviceid'] = newUUID + 'PingMeIOS';
+    }
+
+    delete params['sign'];
+    var sortedKeys = Object.keys(params).sort();
+    var baseParts = [];
+    for (var si = 0; si < sortedKeys.length; si++) {
+        baseParts.push(sortedKeys[si] + '=' + params[sortedKeys[si]]);
+    }
+    params['sign'] = MD5(baseParts.join('&') + SECRET);
+
+    return baseUrl + '?' + buildRawQuery(params);
+}
+
 // ================= 主逻辑 =================
 try {
     var url = $request.url;
     var lowerUrl = url.toLowerCase();
 
-    // 1. 拦截注销请求（阻断退出保号）
+    // 1. 退出登录接口 -> 拦截退出保号 + 弹通知
     if (lowerUrl.indexOf('/logout') !== -1 || lowerUrl.indexOf('/signout') !== -1) {
         console.log(`[${APP_NAME} 拦截注销] 命中注销，已阻断！`);
         sendDebouncedNotification('logout', APP_NAME + ' ✅', '拦截退出成功', '已阻断注销请求，Token 永久保留');
@@ -152,47 +181,28 @@ try {
             }
         });
     } 
-    // 2. 拦截登录 / 注册 / 奖励接口（伪造设备标识）
-    else {
-        var params = {};
-        var qmarkIdx = url.indexOf('?');
-        var baseUrl = (qmarkIdx !== -1) ? url.substring(0, qmarkIdx) : url;
-
-        if (qmarkIdx !== -1) {
-            params = parseRawQuery(url.substring(qmarkIdx + 1));
-        }
-
-        var newUUID = randomUUID();
-        var hasModified = false;
-
-        // ⭐️ 重点针对 PingMe 真实设备键名进行精准伪造！
-        var deviceKeys = ['uniquedeviceid', 'deviceId', 'device_id', 'uuid', 'mac', 'hardwareId'];
-        for (var i = 0; i < deviceKeys.length; i++) {
-            var k = deviceKeys[i];
-            if (params[k] !== undefined) {
-                params[k] = (k === 'uniquedeviceid') ? (newUUID + 'PingMeIOS') : newUUID;
-                hasModified = true;
-            }
-        }
-
-        if (!hasModified) {
-            params['uniquedeviceid'] = newUUID + 'PingMeIOS';
-        }
-
-        // 重新计算签名
-        delete params['sign'];
-        var sortedKeys = Object.keys(params).sort();
-        var baseParts = [];
-        for (var si = 0; si < sortedKeys.length; si++) {
-            baseParts.push(sortedKeys[si] + '=' + params[sortedKeys[si]]);
-        }
-        params['sign'] = MD5(baseParts.join('&') + SECRET);
-
-        var newUrl = baseUrl + '?' + buildRawQuery(params);
-        console.log(`[${APP_NAME} 设备伪造] 已生成全新设备号: ${newUUID}`);
-        sendDebouncedNotification('login', APP_NAME + ' ✅', '登录拦截成功', '已替换全新设备号，免卸载登录生效');
-
+    // 2. 真正的主动登录/发验证码/注册操作 -> 伪造设备 + 弹通知
+    else if (
+        lowerUrl.indexOf('/login') !== -1 || 
+        lowerUrl.indexOf('/signin') !== -1 || 
+        lowerUrl.indexOf('/sendcode') !== -1 || 
+        lowerUrl.indexOf('/register') !== -1 ||
+        lowerUrl.indexOf('/signup') !== -1
+    ) {
+        var newUrl = spoofDeviceAndResign(url);
+        console.log(`[${APP_NAME} 登录多开] 已生成全新设备号并重置签名`);
+        sendDebouncedNotification('login', APP_NAME + ' ✅', '免卸载登录生效', '已伪装全新设备标识');
         $done({ url: newUrl });
+    }
+    // 3. 日常打开 App 触发的后台奖励/状态接口 -> 静默伪造设备，【绝不弹通知】
+    else if (lowerUrl.indexOf('/getregisbonus') !== -1) {
+        var newUrl = spoofDeviceAndResign(url);
+        console.log(`[${APP_NAME} 后台静默] 已静默伪装 getRegisBonus 设备标识，不弹通知打扰`);
+        $done({ url: newUrl });
+    }
+    // 4. 其他无关请求 -> 原样放行
+    else {
+        $done({});
     }
 } catch (e) {
     console.log(`[${APP_NAME} 解锁报错]: ` + e.message);
