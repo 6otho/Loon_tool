@@ -1,4 +1,4 @@
-// PingMe_UnlockLogin.js (精准分流：日常启动静默，仅登录/退出才通知)
+// PingMe_UnlockLogin.js (纯净版：彻底移除启动监听，杜绝权限越权报错)
 const SECRET = '0fOiukQq7jXZV2GRi9LGlO';
 const APP_NAME = 'PingMe';
 
@@ -131,47 +131,14 @@ function buildRawQuery(params) {
     return parts.join('&');
 }
 
-// 统一设备伪造与重算签名逻辑
-function spoofDeviceAndResign(url) {
-    var qmarkIdx = url.indexOf('?');
-    var baseUrl = (qmarkIdx !== -1) ? url.substring(0, qmarkIdx) : url;
-    var params = qmarkIdx !== -1 ? parseRawQuery(url.substring(qmarkIdx + 1)) : {};
-
-    var newUUID = randomUUID();
-    var deviceKeys = ['uniquedeviceid', 'deviceId', 'device_id', 'uuid', 'mac', 'hardwareId'];
-    var hasModified = false;
-
-    for (var i = 0; i < deviceKeys.length; i++) {
-        var k = deviceKeys[i];
-        if (params[k] !== undefined) {
-            params[k] = (k === 'uniquedeviceid') ? (newUUID + 'PingMeIOS') : newUUID;
-            hasModified = true;
-        }
-    }
-
-    if (!hasModified) {
-        params['uniquedeviceid'] = newUUID + 'PingMeIOS';
-    }
-
-    delete params['sign'];
-    var sortedKeys = Object.keys(params).sort();
-    var baseParts = [];
-    for (var si = 0; si < sortedKeys.length; si++) {
-        baseParts.push(sortedKeys[si] + '=' + params[sortedKeys[si]]);
-    }
-    params['sign'] = MD5(baseParts.join('&') + SECRET);
-
-    return baseUrl + '?' + buildRawQuery(params);
-}
-
 // ================= 主逻辑 =================
 try {
     var url = $request.url;
     var lowerUrl = url.toLowerCase();
 
-    // 1. 退出登录接口 -> 拦截退出保号 + 弹通知
+    // 1. 只有主动点【退出登录】时介入：拦截注销，阻断退出，保留 Token
     if (lowerUrl.indexOf('/logout') !== -1 || lowerUrl.indexOf('/signout') !== -1) {
-        console.log(`[${APP_NAME} 拦截注销] 命中注销，已阻断！`);
+        console.log(`[${APP_NAME} 拦截注销] 命中退出操作，已阻断！`);
         sendDebouncedNotification('logout', APP_NAME + ' ✅', '拦截退出成功', '已阻断注销请求，Token 永久保留');
         $done({
             response: {
@@ -181,7 +148,7 @@ try {
             }
         });
     } 
-    // 2. 真正的主动登录/发验证码/注册操作 -> 伪造设备 + 弹通知
+    // 2. 只有主动点【登录/发验证码/注册】时介入：伪造全新设备号
     else if (
         lowerUrl.indexOf('/login') !== -1 || 
         lowerUrl.indexOf('/signin') !== -1 || 
@@ -189,18 +156,42 @@ try {
         lowerUrl.indexOf('/register') !== -1 ||
         lowerUrl.indexOf('/signup') !== -1
     ) {
-        var newUrl = spoofDeviceAndResign(url);
-        console.log(`[${APP_NAME} 登录多开] 已生成全新设备号并重置签名`);
-        sendDebouncedNotification('login', APP_NAME + ' ✅', '免卸载登录生效', '已伪装全新设备标识');
+        var qmarkIdx = url.indexOf('?');
+        var baseUrl = (qmarkIdx !== -1) ? url.substring(0, qmarkIdx) : url;
+        var params = qmarkIdx !== -1 ? parseRawQuery(url.substring(qmarkIdx + 1)) : {};
+
+        var newUUID = randomUUID();
+        var deviceKeys = ['uniquedeviceid', 'deviceId', 'device_id', 'uuid', 'mac', 'hardwareId'];
+        var hasModified = false;
+
+        for (var i = 0; i < deviceKeys.length; i++) {
+            var k = deviceKeys[i];
+            if (params[k] !== undefined) {
+                params[k] = (k === 'uniquedeviceid') ? (newUUID + 'PingMeIOS') : newUUID;
+                hasModified = true;
+            }
+        }
+
+        if (!hasModified) {
+            params['uniquedeviceid'] = newUUID + 'PingMeIOS';
+        }
+
+        // 重新计算签名
+        delete params['sign'];
+        var sortedKeys = Object.keys(params).sort();
+        var baseParts = [];
+        for (var si = 0; si < sortedKeys.length; si++) {
+            baseParts.push(sortedKeys[si] + '=' + params[sortedKeys[si]]);
+        }
+        params['sign'] = MD5(baseParts.join('&') + SECRET);
+
+        var newUrl = baseUrl + '?' + buildRawQuery(params);
+        console.log(`[${APP_NAME} 登录多开] 已生成全新设备号: ${newUUID}`);
+        sendDebouncedNotification('login', APP_NAME + ' ✅', '免卸载登录生效', '已伪装全新设备号');
+
         $done({ url: newUrl });
-    }
-    // 3. 日常打开 App 触发的后台奖励/状态接口 -> 静默伪造设备，【绝不弹通知】
-    else if (lowerUrl.indexOf('/getregisbonus') !== -1) {
-        var newUrl = spoofDeviceAndResign(url);
-        console.log(`[${APP_NAME} 后台静默] 已静默伪装 getRegisBonus 设备标识，不弹通知打扰`);
-        $done({ url: newUrl });
-    }
-    // 4. 其他无关请求 -> 原样放行
+    } 
+    // 3. 其他所有日常请求（包括打开 App 的所有动作）：100% 原样放行，绝不干扰！
     else {
         $done({});
     }
