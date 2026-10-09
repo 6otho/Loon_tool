@@ -1,5 +1,5 @@
 #!name = PingMe 自动助手
-#!desc = 自动签到/刷视频、获取Cookie、免卸载登录与防注销保号、一键清除账号。(适配 Loon 3.5.1+ 新语法)
+#!desc = 自动签到/刷视频、获取Cookie、免卸载登录与防注销保号、一键清空账号。(适配 Loon 3.5.1+ 新语法)
 #!author = 6otho
 #!icon = https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg
 #!tag = 签到, 实用工具
@@ -8,11 +8,11 @@
 #!type = normal
 
 [Argument]
-# 1. 自定义 Cron 表达式 (可随时在 UI 界面自定义更改，默认每2小时及23点45分执行)
+# 1. 自定义 Cron 定时时间 (默认每2小时及23点45分执行，在Loon插件设置里可随时修改)
 cron_time = input,"45 */2,23 * * *",tag=定时签到时间,desc=Cron 表达式：分 时 日 月 周
-# 2. 自定义签到参数 (默认晚上 23:45 触发总结算通知)
-task_arg = input,"23:45",tag=任务参数,desc=支持填结算时间(默认23:45)；填 结算 强制结算；或填指定邮箱
-# 3. Cookie 抓取开关
+# 2. 自定义签到脚本参数 (默认 23:45 触发总结算通知)
+task_arg = input,"23:45",tag=任务参数,desc=支持填结算时间(如 23:45)；填 结算 强制结算；或填指定邮箱
+# 3. Cookie 抓取开关 (录入账号完毕后建议关闭，防止日常频繁弹窗)
 enable_cookie = switch,true,tag=开启Cookie捕获,desc=录入账号完毕后建议关闭此开关
 
 [Mitm]
@@ -20,24 +20,24 @@ hostname = api.pingmeapp.net
 
 [Script]
 # —————————————————————————————————————————————
-# 1. 抓取 Cookie 与账号参数
+# 1. 抓取 Cookie 与账号参数 (受 enable_cookie 开关控制)
 # —————————————————————————————————————————————
 request if ${enable_cookie} == true && ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:queryBalanceAndBonus|checkIn)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_GetCookie.js") with tag="PingMe-获取Cookie", timeout=15, requires_body=true
 
 # —————————————————————————————————————————————
-# 2. 登录解锁与拦截退出（门卫大开口：只要是 /app/ 下的所有请求统统拦截入脚本自行路由）
+# 2. 登录解锁与拦截退出 (收敛精准正则，解决重复触发任务问题)
 # —————————————————————————————————————————————
-request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\//i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_UnlockLogin.js") with tag="PingMe-解锁登录与拦截退出", timeout=20, requires_body=true
+request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp|getRegisBonus|auth)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_UnlockLogin.js") with tag="PingMe-解锁登录与拦截退出", timeout=20, requires_body=true
 
 # —————————————————————————————————————————————
-# 3. 定时自动签到任务 (完全动态：参数全支持在 UI 面板自定义修改)
+# 3. 定时自动签到任务 (动态 Cron + 动态参数注入 + 1000s 超时)
 # —————————————————————————————————————————————
 cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", "${task_arg}") with tag="PingMe", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
 # —————————————————————————————————————————————
-# 4. 手动一键执行面板 (Loon 工具列表点按随时跑签到)
+# 4. 手动一键执行面板 (在 Loon 脚本/工具栏点按随时测跑)
 # —————————————————————————————————————————————
-generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", "${task_arg}") with tag="PingMe-手动签到", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
+generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", "${task_arg}") with tag="PingMe-手动立即签到", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
 # —————————————————————————————————————————————
 # 5. 一键清空历史账号数据面板 (点击即可重置账号库)
