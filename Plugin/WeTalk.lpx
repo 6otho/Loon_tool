@@ -1,7 +1,7 @@
 #!name = WeTalk 自动助手
 #!desc = 自动签到/刷视频、获取Cookie、免卸载登录与防注销保号、一键清空账号。(适配 Loon 3.5.1+ 新语法)
 #!author = 6otho
-#!icon = phone.badge.checkmark
+#!icon = https://upicon.iknn.eu.org/admin/wetalk_1779180231812.jpeg
 #!tag = 签到, 实用工具
 #!system = iOS, iPadOS, macOS
 #!loon_version = 3.5.1(983)
