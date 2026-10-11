@@ -8,9 +8,9 @@
 #!type = normal
 
 [Argument]
-cron_time = input,"50 */2,23 * * *",tag=定时签到时间,desc=Cron表达式
-task_arg = input,"23:50",tag=任务参数,desc=优先结算时间或邮箱(逗号隔开)
-enable_cookie = switch,true,tag=开启Cookie捕获,desc=录入账号后关闭
+cron_time = input,"50 */2,23 * * *",tag=定时签到时间
+task_arg = input,"23:50",tag=任务参数
+enable_cookie = switch,true,tag=开启Cookie捕获
 
 [Mitm]
 hostname = api.wetalkapp.com
@@ -22,11 +22,11 @@ request if ${enable_cookie} == true && ${url} ~= /^https?:\/\/api\.wetalkapp\.co
 # 2. 登录解锁与拦截退出
 request if ${url} ~= /^https?:\/\/api\.wetalkapp\.com\/app\/(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_UnlockLogin.js") with tag="WeTalk-解锁登录与拦截退出", timeout=20, requires_body=true
 
-# 3. 定时自动签到 (换回专属图标地址)
+# 3. 定时自动签到任务 (换回原专属图标)
 cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Task.js", {${cron_time}, ${task_arg}}) with tag="WeTalk", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
-# 4. 手动一键执行面板
+# 4. 手动一键执行面板 (换回原专属图标)
 generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Task.js", {${cron_time}, ${task_arg}}) with tag="WeTalk-手动立即签到", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
-# 5. 清空账号面板
+# 5. 一键清空账号
 generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Clean.js") with tag="WeTalk-清空历史账号", img_url="trash.circle", timeout=10
