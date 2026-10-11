@@ -1,4 +1,4 @@
-// WeTalk_Task.js (纯净极简树形排版 + 极速并发 + 参数结算 + 断网直连 + 废号过滤)
+// WeTalk_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 智能结算容错)
 const scriptStartTime = new Date();
 const scriptName = 'WeTalk'; 
 const storeKey = 'wetalk_accounts_v1';
@@ -17,22 +17,26 @@ function notify(title, subtitle, body) {
 }
 
 // ⭐️ 参数解析：提取 删除指令、自定义结算时间、强制结算、邮箱过滤
-let rawArgument = typeof $argument !== "undefined" && $argument ? $argument.trim() : "";
+let rawArgument = typeof $argument !== "undefined" && $argument ? String($argument).trim() : "";
 let forceSummary = false;
-let targetHour = 23, targetMin = 50;  
+let targetHour = 23, targetMin = 45;  
 let customEmails = [], deleteEmails = [];
 
 if (rawArgument) {
     let args = rawArgument.split(/[,，|]+/).map(e => e.trim()).filter(e => e);
     for (let arg of args) {
         let timeMatch = arg.match(/^(\d{1,2})[:：](\d{1,2})$/);
+        let hourOnlyMatch = arg.match(/^(\d{1,2})[点hH]?$/);
         if (arg.startsWith("删除:") || arg.startsWith("rm:")) {
             deleteEmails.push(arg.replace(/^(删除|rm):/i, "").trim());
         } else if (timeMatch) {
             targetHour = parseInt(timeMatch[1], 10);
             targetMin = parseInt(timeMatch[2], 10);
-        } else if (arg === "结算" || arg === "summary") {
-            forceSummary = true;
+        } else if (hourOnlyMatch) {
+            targetHour = parseInt(hourOnlyMatch[1], 10);
+            targetMin = 0;
+        } else if (arg.includes("结算") || arg.toLowerCase().includes("summary") || arg.includes("force")) {
+            forceSummary = true; // 强制触发总结算大卡片
         } else if (arg.includes("@")) {
             customEmails.push(arg);
         }
@@ -115,24 +119,54 @@ function buildUrl(path, capture) {
   params.sign = MD5(Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&') + SECRET);
   return `https://${API_HOST}/app/${path}?${Object.keys(params).map(k => `${k}=${encodeURIComponent(params[k])}`).join('&')}`;
 }
+
 function buildHeaders(capture, ua, fakeIp) {
   const headers = Object.assign({}, capture.headers || {});
   delete headers['Content-Length']; delete headers['content-length']; delete headers[':authority']; delete headers[':method']; delete headers[':path']; delete headers[':scheme'];
-  headers['Host'] = API_HOST; headers['Accept'] = headers['Accept'] || 'application/json';
+  headers['Host'] = API_HOST; 
+  headers['Accept'] = headers['Accept'] || 'application/json';
+  headers['Connection'] = 'close';
   Object.keys(headers).forEach(k => { if (k.toLowerCase() === 'user-agent') delete headers[k]; });
-  headers['User-Agent'] = ua; headers['X-Forwarded-For'] = fakeIp; headers['X-Real-IP'] = fakeIp; headers['Client-IP'] = fakeIp; headers['True-Client-IP'] = fakeIp;
+  headers['User-Agent'] = ua; 
+  headers['X-Forwarded-For'] = fakeIp; 
+  headers['X-Real-IP'] = fakeIp; 
+  headers['Client-IP'] = fakeIp; 
+  headers['True-Client-IP'] = fakeIp;
   return headers;
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 function requestWithTimeout(options, timeout = 12000) {
   return new Promise((resolve, reject) => {
-      let timer = setTimeout(() => { reject("请求超时(无网络响应)"); }, timeout);
+      let isDone = false;
+      let timer = setTimeout(() => { 
+          if (!isDone) { isDone = true; reject("请求超时(无网络响应)"); } 
+      }, timeout);
       if (typeof $httpClient !== "undefined") {
-          $httpClient.get(options, (error, response, body) => { clearTimeout(timer); if (error) reject(error); else resolve({body, status: response ? (response.status || response.statusCode) : 200}); });
+          $httpClient.get(options, (error, response, body) => { 
+              if (isDone) return;
+              isDone = true;
+              clearTimeout(timer); 
+              if (error) reject(error); 
+              else resolve({body, status: response ? (response.status || response.statusCode) : 200}); 
+          });
       } else if (typeof $task !== "undefined") {
           options.method = 'GET';
-          $task.fetch(options).then(res => { clearTimeout(timer); resolve({body: res.body, status: res.statusCode}); }).catch(err => { clearTimeout(timer); reject(err.error || err); });
-      } else { reject("未知的网络请求环境"); }
+          $task.fetch(options).then(res => { 
+              if (isDone) return;
+              isDone = true;
+              clearTimeout(timer); 
+              resolve({body: res.body, status: res.statusCode}); 
+          }).catch(err => { 
+              if (isDone) return;
+              isDone = true;
+              clearTimeout(timer); 
+              reject(err.error || err); 
+          });
+      } else { 
+          clearTimeout(timer);
+          reject("未知的网络环境"); 
+      }
   });
 }
 
@@ -143,25 +177,30 @@ async function runAccount(acc, currentRunCount) {
   const headers = buildHeaders(acc.capture, buildUA(acc.baseUA, acc.uaSeed), fakeIp);
   
   let initialBal = "?", finalBal = "?", checkInStr = "签×", videoCount = 0, captchaIndex = 0; 
+  let isNetworkFail = false;
   
-  // ⭐️ 完美还原你要的极简格式，不要前缀，不要绿色标志
   console.log(`\n👤 ${accountName} [今日第${currentRunCount}次]\n├ 🌐 伪装节点: ${fakeIp}`);
-  
   function logMsg(text) { console.log(text); }
 
   async function fetchApi(path, retries = 3) {
       const url = buildUrl(path, acc.capture);
-      let useDirect = false; 
+      let useDirect = false;
       for (let i = 0; i < retries; i++) {
           try {
               let reqOpts = { url, headers };
-              if (useDirect) { reqOpts.policy = 'DIRECT'; reqOpts.node = 'DIRECT'; reqOpts.opts = { policy: 'DIRECT' }; }
-              return await requestWithTimeout(reqOpts);
+              if (useDirect) {
+                  reqOpts.node = 'DIRECT';
+              }
+              return await requestWithTimeout(reqOpts, 12000);
           } catch (err) {
               if (i === retries - 1) throw err;
-              if (!useDirect) { logMsg(`├ ⚠️ ${path} 节点失效，已自动切【直连】模式抢救 (${i + 1}/${retries})...`); useDirect = true; } 
-              else { logMsg(`├ ⚠️ ${path} 直连网络依然超时，继续重连 (${i + 1}/${retries})...`); }
-              await sleep(3000); 
+              if (!useDirect) {
+                  logMsg(`├ ⚠️ ${path} 节点超时，已自动切【直连】抢救 (${i + 1}/${retries})...`);
+                  useDirect = true;
+              } else {
+                  logMsg(`├ ⚠️ ${path} 直连依然超时，继续重试 (${i + 1}/${retries})...`);
+              }
+              await sleep(2500); 
           }
       }
   }
@@ -173,28 +212,46 @@ async function runAccount(acc, currentRunCount) {
           if (d.retcode === 0) { initialBal = d.result.balance; logMsg(`├ 💰 初始余额: ${initialBal} Coins`); } 
           else { logMsg(`├ ⚠️ 查询失败: ${d.retmsg}`); }
       } catch (e) { logMsg(`├ ❌ 查询异常`); }
-      await sleep(2000 + Math.random() * 1500);
+      await sleep(1500);
 
       try {
           const res = await fetchApi('checkIn');
           const d = JSON.parse(res.body);
-          if (d.retcode === 0) { logMsg(`├ 📅 签到结果: 成功 (+0.010)`); checkInStr = "签✓"; } 
-          else {
-              if (d.retmsg.includes('已經簽過') || d.retmsg.includes('已经签过') || d.retmsg.includes('already')) { logMsg(`├ 📅 签到状态: 今日已完成`); checkInStr = "已签"; } 
-              else { logMsg(`├ ⚠️ 签到异常: ${d.retmsg}`); }
+          if (d.retcode === 0) { 
+              logMsg(`├ 📅 签到结果: 成功 (+0.010)`); 
+              checkInStr = "签✓"; 
+          } else {
+              const msg = d.retmsg || "";
+              if (msg.includes('已經簽過') || msg.includes('已经签过') || msg.includes('already') ||
+                  msg.includes('次數過多') || msg.includes('次数过多') || msg.includes('稍後再試') || msg.includes('稍后再试')) { 
+                  logMsg(`├ 📅 签到状态: 今日已完成/上限`); 
+                  checkInStr = "已签"; 
+              } else { 
+                  logMsg(`├ ⚠️ 签到异常: ${msg}`); 
+              }
           }
-      } catch (e) { logMsg(`├ ❌ 签到异常`); }
+      } catch (e) { 
+          logMsg(`├ ❌ 签到异常: 网络完全超时无响应`); 
+          isNetworkFail = true; 
+      }
       
       for (let i = 1; i <= MAX_VIDEO; i++) {
-          const randomDelay = Math.floor(Math.random() * 8000) + 35000; 
-          await sleep(i === 1 ? (2000 + Math.random() * 2000) : randomDelay); 
+          const randomDelay = Math.floor(Math.random() * 5000) + 18000; 
+          await sleep(i === 1 ? 2000 : randomDelay); 
           try {
               const res = await fetchApi('videoBonus');
               const d = JSON.parse(res.body);
-              if (d.retcode === 0) { logMsg(`├ 🎬 视频第${i}次: +${d.result?.bonus || '?'} Coins`); videoCount++; } 
-              else {
-                  if (d.retmsg.includes('圖形驗證碼') || d.retmsg.includes('验证码')) { logMsg(`├ ⚠️ 风控提醒: 第${i}次触发验证码限制，收手等待`); captchaIndex = i; } 
-                  else { logMsg(`├ ⏸ 视频第${i}次: ${d.retmsg} (可能已达上限)`); }
+              if (d.retcode === 0) { 
+                  logMsg(`├ 🎬 视频第${i}次: +${d.result?.bonus || '?'} Coins`); 
+                  videoCount++; 
+              } else {
+                  const msg = d.retmsg || "";
+                  if (msg.includes('圖形驗證碼') || msg.includes('验证码')) { 
+                      logMsg(`├ ⚠️ 风控提醒: 第${i}次触发验证码限制，收手等待`); 
+                      captchaIndex = i; 
+                  } else { 
+                      logMsg(`├ ⏸ 视频第${i}次: ${msg} (可能已达上限)`); 
+                  }
                   break; 
               }
           } catch (e) { logMsg(`├ ❌ 视频第${i}次异常 (已跳过)`); }
@@ -202,10 +259,10 @@ async function runAccount(acc, currentRunCount) {
 
       try { const res = await fetchApi('queryBalanceAndBonus'); const d = JSON.parse(res.body); if (d.retcode === 0) finalBal = d.result.balance; } catch (e) {}
       logMsg(`└ 💎 最终余额: ${finalBal} Coins`);
-      return { accountName, initialBal, finalBal, checkInStr, videoCount, captchaIndex, currentRunCount };
+      return { accountName, initialBal, finalBal, checkInStr, videoCount, captchaIndex, currentRunCount, isNetworkFail };
   } catch (globalErr) {
-      logMsg(`└ ❌ 发生致命错误停止`);
-      return { accountName, initialBal, finalBal: "错误", checkInStr: "签×", videoCount: 0, captchaIndex: 0, currentRunCount };
+      logMsg(`└ ❌ 发生致命错误停止: ${globalErr}`);
+      return { accountName, initialBal, finalBal: "错误", checkInStr: "签×", videoCount: 0, captchaIndex: 0, currentRunCount, isNetworkFail: true };
   }
 }
 
@@ -214,7 +271,6 @@ async function runAccount(acc, currentRunCount) {
   let store = loadStore();
   store = autoCleanDuplicates(store);
 
-  // ⭐️【单号注销清除功能】：处理删除命令
   if (deleteEmails.length > 0) {
       let deletedCount = 0;
       let deletedList = [];
@@ -268,7 +324,6 @@ async function runAccount(acc, currentRunCount) {
       dailyStats.counts[accAlias] = (dailyStats.counts[accAlias] || 0) + 1;
       const currentRunCount = dailyStats.counts[accAlias];
       
-      // 保持并发执行速度不变
       tasks.push((async () => {
           await sleep(Math.floor(Math.random() * 1500) + 100); 
           return await runAccount(store.accounts[id], currentRunCount);
@@ -277,13 +332,11 @@ async function runAccount(acc, currentRunCount) {
 
   const results = await Promise.all(tasks);
   
-  // -----------------------------------------------------------
-  // ⭐️ 生成完美的 ASCII Tree 总结算日志
-  // -----------------------------------------------------------
   const nowStr = String(scriptStartTime.getHours()).padStart(2, '0') + ':' + String(scriptStartTime.getMinutes()).padStart(2, '0');
   let finalLog = `━━━━━━━━━━━━━━\n💰 ${scriptName} 任务结束统计\n🕒 ${nowStr}\n\n`;
   let totalVideos = 0, totalCaptcha = 0;
   const manualNotifyLines = [], summaryNotifyLines = [];
+  const networkFailedList = [];
 
   for (let i = 0; i < results.length; i++) {
       const res = results[i];
@@ -309,14 +362,22 @@ async function runAccount(acc, currentRunCount) {
       let earnedStr = "?";
       if (start !== undefined && end !== undefined) { let diff = parseFloat((end - start).toFixed(3)); earnedStr = diff >= 0 ? `+${diff}` : `${diff}`; }
       summaryNotifyLines.push(`☻ ${shortName}｜共签${res.currentRunCount}次 ◂ 日总计 ${earnedStr} (余${end})`);
+
+      if (res.isNetworkFail) {
+          networkFailedList.push(`✗ ${shortName}｜网络超时无响应`);
+      }
   }
 
   let totalEarn = (totalVideos * 0.004).toFixed(3);
   finalLog += `━━━━━━━━━━━━━━\n📊 今日统计\n├ 👥 账号：${results.length}\n├ 🎬 视频：${totalVideos}次\n├ 💰 收益：+${totalEarn} Coins\n└ ⚠️ 风控：${totalCaptcha}次\n━━━━━━━━━`;
   saveDailyStats(dailyStats);
 
-  const currentHour = scriptStartTime.getHours(); const currentMin = scriptStartTime.getMinutes();
-  const isTargetTime = (currentHour === targetHour && currentMin >= targetMin && currentMin < targetMin + 5);
+  const currentHour = scriptStartTime.getHours(); 
+  const currentMin = scriptStartTime.getMinutes();
+
+  // ⭐️ 核心修复：彻底废除死板的 5 分钟上限！
+  // 只要在当晚目标小时内（如 23 点），且分钟数在结算点附近，或者只要在目标小时执行，100% 触发每日总结算！
+  const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 10));
   const shouldSummary = isTargetTime || forceSummary;
 
   const isManualRun = (() => {
@@ -332,17 +393,24 @@ async function runAccount(acc, currentRunCount) {
   const targetTimeStr = `${String(targetHour).padStart(2,'0')}:${String(targetMin).padStart(2,'0')}`;
   let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (参数强制结算)" : ""}\n`;
 
-  if (shouldSummary) {
-      let titleSuffix = forceSummary ? " 📊 手动测试结算" : " 🌙 每日结算";
+  if (networkFailedList.length > 0) {
+      notify(scriptName + " ⚠️ 断网超时告警", `❌ 有 ${networkFailedList.length} 个账号网络请求超时`, networkFailedList.join('\n'));
+      notifyLog += `└ ⚠️ 检测到网络超时无响应，已推送断网异常告警！`;
+  } else if (shouldSummary) {
+      let titleSuffix = forceSummary ? " 📊 强制总结算" : " 🌙 每日结算";
       notify(scriptName + titleSuffix, `✓${executeIds.length}个账号今日签到完成`, summaryNotifyLines.join('\n'));
       notifyLog += `└ 🔔 达到结算条件，已推送今日总结算！`;
   } else if (isManualRun) {
       notify(scriptName + " ✋ 手动执行", `✓${executeIds.length}个账号单次完毕`, manualNotifyLines.join('\n'));
       notifyLog += `└ ✋ 触发手动执行，已推送单次进度！`;
   } else {
-      notifyLog += `└ 🔕 未到结算时段，本次不推送通知`;
+      notifyLog += `└ 🔕 接口响应正常且未到结算时段，本次不打扰推送通知`;
   }
   
   console.log(finalLog + notifyLog + '\n------ Script done -------\n');
   $done();
-})().catch(err => { console.log("❌ 脚本出错: " + err); $done(); });
+})().catch(err => { 
+  console.log("❌ 脚本出错: " + err); 
+  notify(scriptName + " ❌ 运行崩溃", "脚本底层发生严重异常", String(err));
+  $done(); 
+});
