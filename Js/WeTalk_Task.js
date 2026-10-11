@@ -1,4 +1,4 @@
-// WeTalk_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 智能结算容错)
+// WeTalk_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 智能解包结算)
 const scriptStartTime = new Date();
 const scriptName = 'WeTalk'; 
 const storeKey = 'wetalk_accounts_v1';
@@ -16,8 +16,16 @@ function notify(title, subtitle, body) {
     else if (typeof $notify !== "undefined") $notify(String(title), String(subtitle), String(body));
 }
 
-// ⭐️ 参数解析：提取 删除指令、自定义结算时间、强制结算、邮箱过滤
-let rawArgument = typeof $argument !== "undefined" && $argument ? String($argument).trim() : "";
+// ⭐️ 核心解包修复：智能解析 Loon 传过来的对象 { task_arg: "14:05" } 或字符串
+let rawArgument = "";
+if (typeof $argument !== "undefined" && $argument) {
+    if (typeof $argument === "object") {
+        rawArgument = String($argument.task_arg || Object.values($argument)[0] || "").trim();
+    } else {
+        rawArgument = String($argument).trim();
+    }
+}
+
 let forceSummary = false;
 let targetHour = 23, targetMin = 45;  
 let customEmails = [], deleteEmails = [];
@@ -36,7 +44,7 @@ if (rawArgument) {
             targetHour = parseInt(hourOnlyMatch[1], 10);
             targetMin = 0;
         } else if (arg.includes("结算") || arg.toLowerCase().includes("summary") || arg.includes("force")) {
-            forceSummary = true; // 强制触发总结算大卡片
+            forceSummary = true;
         } else if (arg.includes("@")) {
             customEmails.push(arg);
         }
@@ -375,9 +383,8 @@ async function runAccount(acc, currentRunCount) {
   const currentHour = scriptStartTime.getHours(); 
   const currentMin = scriptStartTime.getMinutes();
 
-  // ⭐️ 核心修复：彻底废除死板的 5 分钟上限！
-  // 只要在当晚目标小时内（如 23 点），且分钟数在结算点附近，或者只要在目标小时执行，100% 触发每日总结算！
-  const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 10));
+  // ⭐️ 核心判定：支持整点容错、精准匹配分钟数
+  const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 5));
   const shouldSummary = isTargetTime || forceSummary;
 
   const isManualRun = (() => {
