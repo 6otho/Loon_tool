@@ -1,4 +1,4 @@
-// WeTalk_Task.js (智能解包 + 单号测试必推送 + 彻底消除时间参数矛盾)
+// WeTalk_Task.js (任务参数最高优先 + Cron智能嗅探联动 + 单号必推 + 自动补发结算)
 const scriptStartTime = new Date();
 const scriptName = 'WeTalk'; 
 const storeKey = 'wetalk_accounts_v1';
@@ -16,23 +16,30 @@ function notify(title, subtitle, body) {
     else if (typeof $notify !== "undefined") $notify(String(title), String(subtitle), String(body));
 }
 
-// ⭐️ 智能参数解析：彻底解决邮箱与时间冲突问题
-let rawArgument = "";
+// ⭐️ 参数双通道解析：提取 Cron 表达式与任务参数
+let rawTaskArg = "";
+let rawCronTime = "";
+
 if (typeof $argument !== "undefined" && $argument) {
     if (typeof $argument === "object") {
-        rawArgument = String($argument.task_arg || Object.values($argument)[0] || "").trim();
+        rawTaskArg = String($argument.task_arg || "").trim();
+        rawCronTime = String($argument.cron_time || "").trim();
+        if (!rawTaskArg) {
+            const vals = Object.values($argument);
+            rawTaskArg = String(vals[0] || "").trim();
+        }
     } else {
-        rawArgument = String($argument).trim();
+        rawTaskArg = String($argument).trim();
     }
 }
 
 let forceSummary = false;
-let alwaysNotify = false;
-let targetHour = 23, targetMin = 45;  
+let targetHour = null, targetMin = null; 
 let customEmails = [], deleteEmails = [];
 
-if (rawArgument) {
-    let args = rawArgument.split(/[,，|]+/).map(e => e.trim()).filter(e => e);
+// 1. 最高优先级：从【任务参数】解析时间、邮箱、强制结算
+if (rawTaskArg) {
+    let args = rawTaskArg.split(/[,，|]+/).map(e => e.trim()).filter(e => e);
     for (let arg of args) {
         let timeMatch = arg.match(/^(\d{1,2})[:：](\d{1,2})$/);
         let hourOnlyMatch = arg.match(/^(\d{1,2})[点hH]?$/);
@@ -46,13 +53,33 @@ if (rawArgument) {
             targetMin = 0;
         } else if (arg.includes("结算") || arg.toLowerCase().includes("summary") || arg.includes("force")) {
             forceSummary = true;
-        } else if (arg.includes("通知") || arg.toLowerCase().includes("notify") || arg.toLowerCase() === "all" || arg.includes("每次")) {
-            alwaysNotify = true;
         } else if (arg.includes("@")) {
             customEmails.push(arg);
         }
     }
 }
+
+// 2. 次级优先级（兼容旧习惯）：如果参数没填时间，自动嗅探 Cron 表达式中的特定结算小时
+if (targetHour === null && rawCronTime) {
+    const parts = rawCronTime.trim().split(/\s+/);
+    if (parts.length >= 5) {
+        const minPart = parts[0] === '0' ? parts[1] : parts[0];
+        const hourPart = parts[0] === '0' ? parts[2] : parts[1];
+        
+        const m = parseInt(minPart, 10);
+        if (!isNaN(m)) targetMin = m;
+
+        // 识别类似 */2,22 或 */2,23 或单独小时
+        const specialHourMatch = hourPart.match(/(?:^|,)(\d{1,2})(?:$|,)/);
+        if (specialHourMatch) {
+            targetHour = parseInt(specialHourMatch[1], 10);
+        }
+    }
+}
+
+// 3. 兜底保护：默认 23:50
+if (targetHour === null) targetHour = 23;
+if (targetMin === null) targetMin = 50;
 
 const IOS_VERSIONS = ['17.5.1','17.6.1','17.4.1','17.2.1','16.7.8','17.6','17.3.1','18.0.1','17.1.2','16.6.1'];
 const IOS_SCALES = ['2.00','3.00','3.00','2.00','3.00'];
@@ -65,7 +92,7 @@ function getAccName(acc) { return (acc.capture && acc.capture.paramsRaw && acc.c
 function getTodayStr() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
 
 function getDailyStats() {
-    let stats = { date: getTodayStr(), counts: {}, startBal: {}, endBal: {} };
+    let stats = { date: getTodayStr(), counts: {}, startBal: {}, endBal: {}, lastSummaryDate: "" };
     const raw = readVal(statsKey);
     if (raw) { try { const p = JSON.parse(raw); if (p.date === stats.date) { stats = Object.assign(stats, p); stats.startBal = stats.startBal || {}; stats.endBal = stats.endBal || {}; } } catch (e) {} }
     return stats;
@@ -121,7 +148,7 @@ function buildUA(baseUA, seed) {
     if (/Darwin\/[\d.]+/.test(ua)) { ua = ua.replace(/Darwin\/[\d.]+/, `Darwin/${darwin}`); changed = true; }
     if (changed) return ua;
   }
-  return `WeTalk/30.6.0 (com.innovationworks.wetalk; build:28; iOS ${iosVer}) Alamofire/5.4.3`;
+  return `PingMe/1.0.0 (${model}; iOS ${iosVer}; Scale/${scale}) CFNetwork/${cfn} Darwin/${darwin}`;
 }
 function buildUrl(path, capture) {
   const params = {};
@@ -381,16 +408,24 @@ async function runAccount(acc, currentRunCount) {
 
   let totalEarn = (totalVideos * 0.004).toFixed(3);
   finalLog += `━━━━━━━━━━━━━━\n📊 今日统计\n├ 👥 账号：${results.length}\n├ 🎬 视频：${totalVideos}次\n├ 💰 收益：+${totalEarn} Coins\n└ ⚠️ 风控：${totalCaptcha}次\n━━━━━━━━━`;
-  saveDailyStats(dailyStats);
 
   const currentHour = scriptStartTime.getHours(); 
   const currentMin = scriptStartTime.getMinutes();
 
-  // ⭐️ 核心判定升级：
-  const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 5));
-  const shouldSummary = isTargetTime || forceSummary;
+  // ⭐️ 核心判定：分钟数比对，到了或过了设定时间点，且今天还没结过账就补发
+  const currentTotalMins = currentHour * 60 + currentMin;
+  const targetTotalMins = targetHour * 60 + targetMin;
+  const alreadySummarizedToday = (dailyStats.lastSummaryDate === getTodayStr());
 
-  // ⭐️ 只要指定了单号测试 (customEmails.length > 0)，或参数开启了每次必推 (alwaysNotify)，必推通知！
+  const isTimeForSummary = (currentTotalMins >= targetTotalMins && !alreadySummarizedToday);
+  const shouldSummary = isTimeForSummary || forceSummary;
+
+  if (shouldSummary && !forceSummary) {
+      dailyStats.lastSummaryDate = getTodayStr();
+  }
+  saveDailyStats(dailyStats);
+
+  // 单号测试判断
   const isTargetAccountTest = (customEmails.length > 0);
 
   const isManualRun = (() => {
@@ -404,23 +439,20 @@ async function runAccount(acc, currentRunCount) {
   })();
 
   const targetTimeStr = `${String(targetHour).padStart(2,'0')}:${String(targetMin).padStart(2,'0')}`;
-  let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (参数强制结算)" : ""}\n`;
+  let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (强制结算)" : ""}\n`;
 
-  // 通知分流：彻底解决单号测试被静默吃掉的矛盾
+  // ⭐️ 彻底理顺的通知分流：
   if (networkFailedList.length > 0) {
       notify(scriptName + " ⚠️ 断网超时告警", `❌ 有 ${networkFailedList.length} 个账号网络请求超时`, networkFailedList.join('\n'));
       notifyLog += `└ ⚠️ 检测到网络超时无响应，已推送断网异常告警！`;
   } else if (shouldSummary) {
       let titleSuffix = forceSummary ? " 📊 强制总结算" : " 🌙 每日结算";
       notify(scriptName + titleSuffix, `✓${executeIds.length}个账号今日签到完成`, summaryNotifyLines.join('\n'));
-      notifyLog += `└ 🔔 达到结算条件，已推送今日总结算！`;
+      notifyLog += `└ 🔔 达到结算时段，已推送今日总结算！`;
   } else if (isTargetAccountTest) {
-      // ⭐️ 命中单号定向测试：立刻推送单号测试结果卡片！
+      // ⭐️ 只要填了邮箱单测，100% 弹出测试结果通知！
       notify(scriptName + " 👤 单号测试完成", `✓${executeIds.length}个指定账号执行完毕`, manualNotifyLines.join('\n'));
-      notifyLog += `└ 👤 检测到定向测试单号，已强制推送测试结果！`;
-  } else if (alwaysNotify) {
-      notify(scriptName + " 🔔 定时执行完成", `✓${executeIds.length}个账号运行完毕`, manualNotifyLines.join('\n'));
-      notifyLog += `└ 🔔 开启了常开推送，已推送执行进度！`;
+      notifyLog += `└ 👤 检测到指定单号测试，已推送测试结果！`;
   } else if (isManualRun) {
       notify(scriptName + " ✋ 手动执行", `✓${executeIds.length}个账号单次完毕`, manualNotifyLines.join('\n'));
       notifyLog += `└ ✋ 触发手动执行，已推送单次进度！`;
