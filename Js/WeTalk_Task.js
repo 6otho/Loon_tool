@@ -1,4 +1,4 @@
-// WeTalk_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 智能解包结算)
+// WeTalk_Task.js (智能解包 + 单号测试必推送 + 彻底消除时间参数矛盾)
 const scriptStartTime = new Date();
 const scriptName = 'WeTalk'; 
 const storeKey = 'wetalk_accounts_v1';
@@ -16,7 +16,7 @@ function notify(title, subtitle, body) {
     else if (typeof $notify !== "undefined") $notify(String(title), String(subtitle), String(body));
 }
 
-// ⭐️ 核心解包修复：智能解析 Loon 传过来的对象 { task_arg: "14:05" } 或字符串
+// ⭐️ 智能参数解析：彻底解决邮箱与时间冲突问题
 let rawArgument = "";
 if (typeof $argument !== "undefined" && $argument) {
     if (typeof $argument === "object") {
@@ -27,6 +27,7 @@ if (typeof $argument !== "undefined" && $argument) {
 }
 
 let forceSummary = false;
+let alwaysNotify = false;
 let targetHour = 23, targetMin = 45;  
 let customEmails = [], deleteEmails = [];
 
@@ -45,6 +46,8 @@ if (rawArgument) {
             targetMin = 0;
         } else if (arg.includes("结算") || arg.toLowerCase().includes("summary") || arg.includes("force")) {
             forceSummary = true;
+        } else if (arg.includes("通知") || arg.toLowerCase().includes("notify") || arg.toLowerCase() === "all" || arg.includes("每次")) {
+            alwaysNotify = true;
         } else if (arg.includes("@")) {
             customEmails.push(arg);
         }
@@ -383,9 +386,12 @@ async function runAccount(acc, currentRunCount) {
   const currentHour = scriptStartTime.getHours(); 
   const currentMin = scriptStartTime.getMinutes();
 
-  // ⭐️ 核心判定：支持整点容错、精准匹配分钟数
+  // ⭐️ 核心判定升级：
   const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 5));
   const shouldSummary = isTargetTime || forceSummary;
+
+  // ⭐️ 只要指定了单号测试 (customEmails.length > 0)，或参数开启了每次必推 (alwaysNotify)，必推通知！
+  const isTargetAccountTest = (customEmails.length > 0);
 
   const isManualRun = (() => {
       if (typeof $environment !== 'undefined') {
@@ -400,6 +406,7 @@ async function runAccount(acc, currentRunCount) {
   const targetTimeStr = `${String(targetHour).padStart(2,'0')}:${String(targetMin).padStart(2,'0')}`;
   let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (参数强制结算)" : ""}\n`;
 
+  // 通知分流：彻底解决单号测试被静默吃掉的矛盾
   if (networkFailedList.length > 0) {
       notify(scriptName + " ⚠️ 断网超时告警", `❌ 有 ${networkFailedList.length} 个账号网络请求超时`, networkFailedList.join('\n'));
       notifyLog += `└ ⚠️ 检测到网络超时无响应，已推送断网异常告警！`;
@@ -407,6 +414,13 @@ async function runAccount(acc, currentRunCount) {
       let titleSuffix = forceSummary ? " 📊 强制总结算" : " 🌙 每日结算";
       notify(scriptName + titleSuffix, `✓${executeIds.length}个账号今日签到完成`, summaryNotifyLines.join('\n'));
       notifyLog += `└ 🔔 达到结算条件，已推送今日总结算！`;
+  } else if (isTargetAccountTest) {
+      // ⭐️ 命中单号定向测试：立刻推送单号测试结果卡片！
+      notify(scriptName + " 👤 单号测试完成", `✓${executeIds.length}个指定账号执行完毕`, manualNotifyLines.join('\n'));
+      notifyLog += `└ 👤 检测到定向测试单号，已强制推送测试结果！`;
+  } else if (alwaysNotify) {
+      notify(scriptName + " 🔔 定时执行完成", `✓${executeIds.length}个账号运行完毕`, manualNotifyLines.join('\n'));
+      notifyLog += `└ 🔔 开启了常开推送，已推送执行进度！`;
   } else if (isManualRun) {
       notify(scriptName + " ✋ 手动执行", `✓${executeIds.length}个账号单次完毕`, manualNotifyLines.join('\n'));
       notifyLog += `└ ✋ 触发手动执行，已推送单次进度！`;
