@@ -1,4 +1,4 @@
-// PingMe_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 仅断网超时告警)
+// PingMe_Task.js (纯净极简树形排版 + 极速并发 + 伪造随机IP + 超时切直连 + 智能结算容错)
 const scriptStartTime = new Date();
 const scriptName = 'PingMe'; 
 const storeKey = 'pingme_accounts_v1';
@@ -17,22 +17,26 @@ function notify(title, subtitle, body) {
 }
 
 // ⭐️ 参数解析：提取 删除指令、自定义结算时间、强制结算、邮箱过滤
-let rawArgument = typeof $argument !== "undefined" && $argument ? $argument.trim() : "";
+let rawArgument = typeof $argument !== "undefined" && $argument ? String($argument).trim() : "";
 let forceSummary = false;
-let targetHour = 23, targetMin = 50;  
+let targetHour = 23, targetMin = 45;  
 let customEmails = [], deleteEmails = [];
 
 if (rawArgument) {
     let args = rawArgument.split(/[,，|]+/).map(e => e.trim()).filter(e => e);
     for (let arg of args) {
         let timeMatch = arg.match(/^(\d{1,2})[:：](\d{1,2})$/);
+        let hourOnlyMatch = arg.match(/^(\d{1,2})[点hH]?$/);
         if (arg.startsWith("删除:") || arg.startsWith("rm:")) {
             deleteEmails.push(arg.replace(/^(删除|rm):/i, "").trim());
         } else if (timeMatch) {
             targetHour = parseInt(timeMatch[1], 10);
             targetMin = parseInt(timeMatch[2], 10);
-        } else if (arg === "结算" || arg === "summary") {
-            forceSummary = true;
+        } else if (hourOnlyMatch) {
+            targetHour = parseInt(hourOnlyMatch[1], 10);
+            targetMin = 0;
+        } else if (arg.includes("结算") || arg.toLowerCase().includes("summary") || arg.includes("force")) {
+            forceSummary = true; // 强制触发总结算大卡片
         } else if (arg.includes("@")) {
             customEmails.push(arg);
         }
@@ -45,7 +49,6 @@ const IPHONE_MODELS = ['iPhone14,3','iPhone13,3','iPhone15,3','iPhone16,1','iPho
 const CFN_VERS = ['1410.0.3','1494.0.7','1568.100.1','1209.1','1474.0.4','1568.200.2'];
 const DARWIN_VERS = ['22.6.0','23.5.0','23.6.0','24.0.0','22.4.0'];
 
-// ⭐️ 恢复虚拟随机 IP 生成
 function getRandomIP() { return `${Math.floor(Math.random()*254)+1}.${Math.floor(Math.random()*254)+1}.${Math.floor(Math.random()*254)+1}.${Math.floor(Math.random()*254)+1}`; }
 function getAccName(acc) { return (acc.capture && acc.capture.paramsRaw && acc.capture.paramsRaw.email) ? decodeURIComponent(acc.capture.paramsRaw.email) : (acc.alias || acc.id); }
 function getTodayStr() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
@@ -117,7 +120,6 @@ function buildUrl(path, capture) {
   return `https://${API_HOST}/app/${path}?${Object.keys(params).map(k => `${k}=${encodeURIComponent(params[k])}`).join('&')}`;
 }
 
-// ⭐️ 恢复伪装 IP 注入 + Connection: close 防挂死
 function buildHeaders(capture, ua, fakeIp) {
   const headers = Object.assign({}, capture.headers || {});
   delete headers['Content-Length']; delete headers['content-length']; delete headers[':authority']; delete headers[':method']; delete headers[':path']; delete headers[':scheme'];
@@ -180,7 +182,6 @@ async function runAccount(acc, currentRunCount) {
   console.log(`\n👤 ${accountName} [今日第${currentRunCount}次]\n├ 🌐 伪装节点: ${fakeIp}`);
   function logMsg(text) { console.log(text); }
 
-  // ⭐️ 核心超时切直连：第一次超时立刻切 DIRECT
   async function fetchApi(path, retries = 3) {
       const url = buildUrl(path, acc.capture);
       let useDirect = false;
@@ -270,7 +271,6 @@ async function runAccount(acc, currentRunCount) {
   let store = loadStore();
   store = autoCleanDuplicates(store);
 
-  // ⭐️ 单号注销清除功能
   if (deleteEmails.length > 0) {
       let deletedCount = 0;
       let deletedList = [];
@@ -332,9 +332,6 @@ async function runAccount(acc, currentRunCount) {
 
   const results = await Promise.all(tasks);
   
-  // -----------------------------------------------------------
-  // ⭐️ 100% 原始 ASCII Tree 总结算日志与排版
-  // -----------------------------------------------------------
   const nowStr = String(scriptStartTime.getHours()).padStart(2, '0') + ':' + String(scriptStartTime.getMinutes()).padStart(2, '0');
   let finalLog = `━━━━━━━━━━━━━━\n💰 ${scriptName} 任务结束统计\n🕒 ${nowStr}\n\n`;
   let totalVideos = 0, totalCaptcha = 0;
@@ -375,8 +372,12 @@ async function runAccount(acc, currentRunCount) {
   finalLog += `━━━━━━━━━━━━━━\n📊 今日统计\n├ 👥 账号：${results.length}\n├ 🎬 视频：${totalVideos}次\n├ 💰 收益：+${totalEarn} Coins\n└ ⚠️ 风控：${totalCaptcha}次\n━━━━━━━━━`;
   saveDailyStats(dailyStats);
 
-  const currentHour = scriptStartTime.getHours(); const currentMin = scriptStartTime.getMinutes();
-  const isTargetTime = (currentHour === targetHour && currentMin >= targetMin && currentMin < targetMin + 5);
+  const currentHour = scriptStartTime.getHours(); 
+  const currentMin = scriptStartTime.getMinutes();
+
+  // ⭐️ 核心修复：彻底废除死板的 5 分钟上限！
+  // 只要在当晚目标小时内（如 23 点），且分钟数在结算点附近，或者只要在目标小时执行，100% 触发每日总结算！
+  const isTargetTime = (currentHour === targetHour && currentMin >= (targetMin - 10));
   const shouldSummary = isTargetTime || forceSummary;
 
   const isManualRun = (() => {
@@ -392,12 +393,11 @@ async function runAccount(acc, currentRunCount) {
   const targetTimeStr = `${String(targetHour).padStart(2,'0')}:${String(targetMin).padStart(2,'0')}`;
   let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (参数强制结算)" : ""}\n`;
 
-  // ⭐️ 仅真正网络断线才告警，次数过多绝不弹窗
   if (networkFailedList.length > 0) {
       notify(scriptName + " ⚠️ 断网超时告警", `❌ 有 ${networkFailedList.length} 个账号网络请求超时`, networkFailedList.join('\n'));
       notifyLog += `└ ⚠️ 检测到网络超时无响应，已推送断网异常告警！`;
   } else if (shouldSummary) {
-      let titleSuffix = forceSummary ? " 📊 手动测试结算" : " 🌙 每日结算";
+      let titleSuffix = forceSummary ? " 📊 强制总结算" : " 🌙 每日结算";
       notify(scriptName + titleSuffix, `✓${executeIds.length}个账号今日签到完成`, summaryNotifyLines.join('\n'));
       notifyLog += `└ 🔔 达到结算条件，已推送今日总结算！`;
   } else if (isManualRun) {
