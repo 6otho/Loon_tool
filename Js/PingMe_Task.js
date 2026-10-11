@@ -1,4 +1,4 @@
-// PingMe_Task.js (任务参数最高优先 + Cron智能嗅探联动 + 单号必推 + 自动补发结算)
+// PingMe_Task.js (任务参数绝对最高权限 + 兼容旧定时习惯 + 单号必推 + 自动补发结算)
 const scriptStartTime = new Date();
 const scriptName = 'PingMe'; 
 const storeKey = 'pingme_accounts_v1';
@@ -16,7 +16,7 @@ function notify(title, subtitle, body) {
     else if (typeof $notify !== "undefined") $notify(String(title), String(subtitle), String(body));
 }
 
-// ⭐️ 参数双通道解析：提取 Cron 表达式与任务参数
+// ⭐️ 参数双通道智能解析
 let rawTaskArg = "";
 let rawCronTime = "";
 
@@ -37,7 +37,7 @@ let forceSummary = false;
 let targetHour = null, targetMin = null; 
 let customEmails = [], deleteEmails = [];
 
-// 1. 最高优先级：从【任务参数】解析时间、邮箱、强制结算
+// ⭐️ 1. 绝对最高优先级：任务参数（只要填了时间，无论如何以参数为主）
 if (rawTaskArg) {
     let args = rawTaskArg.split(/[,，|]+/).map(e => e.trim()).filter(e => e);
     for (let arg of args) {
@@ -59,7 +59,7 @@ if (rawTaskArg) {
     }
 }
 
-// 2. 次级优先级（兼容旧习惯）：如果参数没填时间，自动嗅探 Cron 表达式中的特定结算小时
+// ⭐️ 2. 次级兼容优先级：参数只写邮箱时，自动继承旧定时签到的时间习惯
 if (targetHour === null && rawCronTime) {
     const parts = rawCronTime.trim().split(/\s+/);
     if (parts.length >= 5) {
@@ -69,7 +69,6 @@ if (targetHour === null && rawCronTime) {
         const m = parseInt(minPart, 10);
         if (!isNaN(m)) targetMin = m;
 
-        // 识别类似 */2,22 或 */2,23 或单独小时
         const specialHourMatch = hourPart.match(/(?:^|,)(\d{1,2})(?:$|,)/);
         if (specialHourMatch) {
             targetHour = parseInt(specialHourMatch[1], 10);
@@ -77,7 +76,7 @@ if (targetHour === null && rawCronTime) {
     }
 }
 
-// 3. 兜底保护：默认 23:50
+// ⭐️ 3. 兜底保护：默认 23:50
 if (targetHour === null) targetHour = 23;
 if (targetMin === null) targetMin = 50;
 
@@ -412,7 +411,7 @@ async function runAccount(acc, currentRunCount) {
   const currentHour = scriptStartTime.getHours(); 
   const currentMin = scriptStartTime.getMinutes();
 
-  // ⭐️ 核心判定：分钟数比对，到了或过了设定时间点，且今天还没结过账就补发
+  // ⭐️ 核心判定：计算当天总分钟数，过了设定点且今天还没结过账，立刻触发补发
   const currentTotalMins = currentHour * 60 + currentMin;
   const targetTotalMins = targetHour * 60 + targetMin;
   const alreadySummarizedToday = (dailyStats.lastSummaryDate === getTodayStr());
@@ -425,7 +424,7 @@ async function runAccount(acc, currentRunCount) {
   }
   saveDailyStats(dailyStats);
 
-  // 单号测试判断
+  // ⭐️ 只要指定了单号测试 (customEmails.length > 0)，必推通知！
   const isTargetAccountTest = (customEmails.length > 0);
 
   const isManualRun = (() => {
@@ -441,7 +440,7 @@ async function runAccount(acc, currentRunCount) {
   const targetTimeStr = `${String(targetHour).padStart(2,'0')}:${String(targetMin).padStart(2,'0')}`;
   let notifyLog = `\n🤖 通知状态\n├ 🕒 当前时间：${nowStr}\n├ 🎯 结算时间：${targetTimeStr}${forceSummary ? " (强制结算)" : ""}\n`;
 
-  // ⭐️ 彻底理顺的通知分流：
+  // ⭐️ 顺畅通知分流：
   if (networkFailedList.length > 0) {
       notify(scriptName + " ⚠️ 断网超时告警", `❌ 有 ${networkFailedList.length} 个账号网络请求超时`, networkFailedList.join('\n'));
       notifyLog += `└ ⚠️ 检测到网络超时无响应，已推送断网异常告警！`;
@@ -450,7 +449,7 @@ async function runAccount(acc, currentRunCount) {
       notify(scriptName + titleSuffix, `✓${executeIds.length}个账号今日签到完成`, summaryNotifyLines.join('\n'));
       notifyLog += `└ 🔔 达到结算时段，已推送今日总结算！`;
   } else if (isTargetAccountTest) {
-      // ⭐️ 只要填了邮箱单测，100% 弹出测试结果通知！
+      // ⭐️ 填邮箱单测：必定推送单号测试结果！
       notify(scriptName + " 👤 单号测试完成", `✓${executeIds.length}个指定账号执行完毕`, manualNotifyLines.join('\n'));
       notifyLog += `└ 👤 检测到指定单号测试，已推送测试结果！`;
   } else if (isManualRun) {
