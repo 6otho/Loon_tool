@@ -1,27 +1,27 @@
-#!name=Spotify歌词翻译
-#!desc=通过百度翻译API实现歌词汉化，修复新版歌词翻译域名无法触发问题
-#!author=6otho[https://github.com/6otho],app2smile[https://github.com/app2smile]
-#!homepage=https://t.me/PaKo_Ov_Chan
-#!icon=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
-#!loon_version=3.3+
-#!date=2025-06-23 00:00:00
+#!name = Spotify歌词翻译
+#!desc = 通过百度翻译API实现歌词汉化，适配Loon 3.5.3+新语法并绕过TUN直连
+#!author = 6otho, app2smile
+#!icon = https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
+#!loon_version = 3.5.1(983)
+#!date = 2026-10-17
+#!type = normal
 
 [Argument]
-appid=input,tag=百度appid,desc=此处填写百度appid
-securityKey=input,tag=百度密钥,desc=此处填写百度密钥
+appid = input,"",type=string,tag=百度appid,desc=此处填写百度appid
+securityKey = input,"",type=string,tag=百度密钥,desc=此处填写百度密钥
+
+[General]
+# 核心修复：强制百度翻译接口绕过 TUN 走系统原生网络直连，彻底根除 Request timeout
+bypass-tun = fanyi-api.baidu.com, api.fanyi.baidu.com
+real-ip = fanyi-api.baidu.com, api.fanyi.baidu.com
 
 [Rule]
-# 1. 强制将百度翻译接口走本地直连，解决海外节点超时问题
-DOMAIN, api.fanyi.baidu.com, DIRECT
-DOMAIN, fanyi-api.baidu.com, DIRECT
-# 2. 原插件的QUIC拦截规则
 AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-# 将 timeout 由原来的 10 秒适当放宽到 25 秒，避免整首歌词文本过长时响应不及时
-http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=25,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js,argument=[{appid},{securityKey}]
+response if ${url} ~= /^https:\/\/(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?\/color-lyrics\/v2\/track\// then script("https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js", {${appid}, ${securityKey}}) with requires_body=true, binary_body=true, timeout=30, tag="Spotify歌词汉化"
 
-[MITM]
+[Mitm]
 hostname = *.spotify.com
