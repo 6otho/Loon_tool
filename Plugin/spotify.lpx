@@ -1,5 +1,5 @@
-#!name=Spotify歌词翻译(修复版)
-#!desc=修复繁体中文误翻译导致的超时死循环，支持通知开关
+#!name=Spotify歌词互译与汉化
+#!desc=繁体翻简体，简体翻繁体，其他外语翻简体，支持通知开关
 #!author=app2smile, 6otho
 #!icon=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
 #!loon_version=3.3+
@@ -7,7 +7,7 @@
 [Argument]
 appid=input,tag=百度appid,desc=此处填写百度appid
 securityKey=input,tag=百度密钥,desc=此处填写百度密钥
-notify=switch,false,tag=开启错误通知,desc=是否开启翻译报错横幅提示(默认关闭)
+notify=switch,false,tag=开启错误通知,desc=是否弹窗报错(默认关闭)
 
 [Rule]
 AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, QUIC)), REJECT
@@ -15,7 +15,7 @@ AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=15,script-path=Spotify_lyrics.js,argument=[{appid},{securityKey},{notify}]
+http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=20,script-path=Spotify_lyrics.js,argument=[{appid},{securityKey},{notify}]
 
 [MITM]
 hostname = *.spotify.com
