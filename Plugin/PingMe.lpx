@@ -26,7 +26,7 @@ request if ${url} ~= /^https?:\/\/api\.pingmeapp\.net\/app\/(?:log(?:in)?Out|sig
 cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", {${cron_time}, ${task_arg}}) with tag="PingMe", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
 # 4. 手动一键执行面板
-generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", {${cron_time}, ${task_arg}}) with tag="PingMe-手动立即签到", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
+# generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Task.js", {${cron_time}, ${task_arg}}) with tag="PingMe-手动立即签到", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
 
 # 5. 一键清空账号
-generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Clean.js") with tag="PingMe-清空历史账号", img_url="trash.circle", timeout=10
+# generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/PingMe_Clean.js") with tag="PingMe-清空历史账号", img_url="trash.circle", timeout=10
