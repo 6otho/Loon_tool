@@ -1,6 +1,6 @@
 /*
 作者：@xream @keywos @wuhu_zzz @ TEXAS @整点猫咪 技术指导：整点薯条 
-原测速逻辑完全保留，UI 深度复刻
+原测速逻辑完全保留，UI 通过 htmlMessage 完全复刻 LoonSpeedtestView 规范
 */
 
 // ===================== 精简环境适配器 =====================
@@ -54,6 +54,23 @@ function Env(name) {
 const $ = new Env('网络测速');
 // ===================== 精简环境适配器结束 =====================
 
+// ===================== Loon 原生 HTML 渲染器 =====================
+function escape(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function text(value, size, weight, color) {
+  return '<font face="Helvetica" color="' + (color || '#777777') + '"><span style="font-family:Helvetica;font-size:' + size + 'px;font-weight:' + (weight || 400) + ';color:' + (color || '#777777') + '">' + escape(value) + '</span></font>';
+}
+function paragraph(body) { 
+  return '<p style="margin:0 0 14px;line-height:1.4">' + body + '</p>'; 
+}
+function documentHtml(body) {
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"></head><body>' + body + '</body></html>';
+}
+// ================================================================
+
 let arg = {};
 if (typeof $argument !== 'undefined') {
   arg = Object.fromEntries($argument.split('&').map(item => item.split('=')));
@@ -61,7 +78,7 @@ if (typeof $argument !== 'undefined') {
 
 let title = '';
 let content = '';
-let htmlContent = '';
+let htmlMessage = '';
 let icon = '';
 let color = '';
 
@@ -70,9 +87,12 @@ let color = '';
     console.log('网络测速开始...');
   }
   
+  // 默认使用5MB测试流量
   const mb = $.lodash_get(arg, 'mb') || 5;
   const bytes = mb * 1024 * 1024;
+  
   const downloadTimeout = 5000 + mb * 1000;
+  console.log(`测试数据量: ${mb}MB, 超时时间: ${downloadTimeout / 1000}秒`);
   
   try {
     let start = Date.now();
@@ -94,7 +114,10 @@ let color = '';
     });
     
     const pingt = Date.now() - pingstart;
+    console.log(`延迟时间: ${pingt}ms`);
+    console.log(`下载耗时: ${duration.toFixed(2)}s`);
     
+    // 图标与颜色计算
     const a = Diydecide(0, 50, 100, Math.round(speed * 8));
     const b = Diydecide(0, 100, 200, pingt) + 3;
     
@@ -110,54 +133,56 @@ let color = '';
     icon = shifts[a];
     color = shifts[b];
     
-    // ========== 还原截图颜色与大小的排版 ==========
-    title = "速度测试";
+    title = arg?.title || "速度测试";
     
     const nodeName = $.lodash_get($environment, 'params.nodeInfo.name') || $.lodash_get($environment, 'params.node') || '当前节点';
     const downloadMbps = (speed * 8).toFixed(2);
     const uploadMbps = arg?.upload || (speed * 8 * 0.6).toFixed(2);
-    const totalDuration = duration.toFixed(1);
-    const totalMB = parseFloat(mb).toFixed(1);
+    const formatDuration = duration.toFixed(1);
+    const formatMB = parseFloat(mb).toFixed(1);
 
-    // 方案 A：针对支持 HTML 渲染（完美还原大字号、深绿色 #1e824c、深蓝色 #225f9e 与小灰字）
-    htmlContent = `
-<div style="font-family: -apple-system, sans-serif; text-align: left; padding: 4px;">
-  <div style="color: #666; font-size: 14px; margin-bottom: 12px;">${nodeName}</div>
-  <div style="color: #10B981; font-size: 13px;">↓ 下载 · Apple CDN</div>
-  <div style="margin-bottom: 12px;">
-    <span style="color: #059669; font-size: 32px; font-weight: bold; line-height: 1.1;">${downloadMbps}</span>
-    <span style="color: #888; font-size: 13px; margin-left: 4px;">Mbps</span>
-  </div>
-  <div style="color: #3B82F6; font-size: 13px;">↑ 上传 · Apple CDN</div>
-  <div style="margin-bottom: 14px;">
-    <span style="color: #2563EB; font-size: 32px; font-weight: bold; line-height: 1.1;">${uploadMbps}</span>
-    <span style="color: #888; font-size: 13px; margin-left: 4px;">Mbps</span>
-  </div>
-  <div style="color: #888; font-size: 12px;">单路 · ${totalDuration} 秒 · ${totalMB} MB</div>
-</div>`.trim();
+    // ========== 生成与 Loon 截图 100% 一致的 HTML 视图 ==========
+    var body = paragraph(text(nodeName, 13, 500));
 
-    // 方案 B：纯文本降级兜底
-    content = `${nodeName}\n\n` +
-              `↓ 下载 · Apple CDN\n` +
-              `${downloadMbps} Mbps\n\n` +
-              `↑ 上传 · Apple CDN\n` +
-              `${uploadMbps} Mbps\n\n` +
-              `单路 · ${totalDuration} 秒 · ${totalMB} MB`;
-    // ===========================================
+    // 下行（#338276 绿色，30px 大字号，600 加粗）
+    var downHeading = '↓ 下载  ·  Apple CDN';
+    var downLines = [
+      text(downHeading, 13, 500, '#338276'),
+      text(downloadMbps, 30, 600, '#338276') + text(' Mbps', 12)
+    ];
+    body += paragraph(downLines.join('<br>'));
+
+    // 上行（#527caa 蓝色，30px 大字号，600 加粗）
+    var upHeading = '↑ 上传  ·  Apple CDN';
+    var upLines = [
+      text(upHeading, 13, 500, '#527caa'),
+      text(uploadMbps, 30, 600, '#527caa') + text(' Mbps', 12)
+    ];
+    body += paragraph(upLines.join('<br>'));
+
+    // 底部汇总（11px 灰色）
+    body += paragraph(text('单路 · ' + formatDuration + ' 秒 · ' + formatMB + ' MB', 11));
+
+    htmlMessage = documentHtml(body);
     
+    // 纯文本兜底
+    content = `${nodeName}\n\n↓ 下载 · Apple CDN\n${downloadMbps} Mbps\n\n↑ 上传 · Apple CDN\n${uploadMbps} Mbps\n\n单路 · ${formatDuration} 秒 · ${formatMB} MB`;
+
     console.log('✅ 测速成功');
   } catch (e) {
     console.error('❌ 测速失败:', e);
     title = `速度测试`;
     const nodeName = $.lodash_get($environment, 'params.nodeInfo.name') || $.lodash_get($environment, 'params.node') || '当前节点';
+    htmlMessage = documentHtml(paragraph(text(nodeName, 13, 500)) + paragraph(text('测速失败: ' + (e.message || e.error || e), 13, 400, '#EF476F')));
     content = `${nodeName}\n\n测速失败: ${e.message || e.error || e}`;
   }
 })()
 .finally(async () => {
+  // 传给 Loon 的核心参数是 htmlMessage
   const result = { 
     title, 
-    content: htmlContent || content, // 同时输出富文本样式与纯文本
-    html: htmlContent,
+    htmlMessage, 
+    content, 
     icon, 
     'icon-color': color,
     ...arg 
@@ -166,6 +191,7 @@ let color = '';
   $.done(result);
 });
 
+// 确定变量所在区间
 function Diydecide(x, y, z, item) {
   let array = [x, y, z];
   array.push(item);
