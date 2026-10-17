@@ -1,5 +1,5 @@
 /**
- * 本地运营商阻断检测 · Loon generic 脚本 (暗黑全面白字修复版)
+ * 本地运营商阻断检测 · Loon generic 脚本 (暗黑全面白字彻底修复版)
  *
  * 使用: 在 Loon 的节点页面对目标执行「运营商阻断查询」
  * 
@@ -43,7 +43,7 @@ async function run() {
 
     const localRegionEn = getRegionEn(localNetZh?.regionName, localNetEn?.regionName);
 
-    // 请求省内与核心城市探针数据 (多节点并发防连坐)
+    // 请求省内与核心城市探针数据
     const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
 
     render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol, localRegionEn);
@@ -84,7 +84,7 @@ function testNativeProxy(targetNodeName) {
   });
 }
 
-// === 2. 优化并发探针抓取 ===
+// === 2. 并发探针抓取 ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -269,7 +269,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
 
   function evaluateOperator(opInfo) {
     if (!opInfo.probes.length) {
-      return { html: `<span class="sub-text">🚫 平台暂无本省机器</span>`, status: "none" };
+      return { html: `<span class="sub-text" style="color: var(--text-sub);">🚫 平台暂无本省机器</span>`, status: "none" };
     }
     activeProbeOps++;
     const total = opInfo.probes.length;
@@ -337,7 +337,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
   }
 
   if (isUdp) {
-    localFeedbackText += "<br/><small class='udp-tip'>注：此为 UDP 协议。部分节点服务端默认禁 Ping，可能导致下方探针亮红灯，<b>请以本地实测结果为准</b>。</small>";
+    localFeedbackText += "<br/><small class='udp-tip' style='color: var(--text-sub);'>注：此为 UDP 协议。部分节点服务端默认禁 Ping，可能导致下方探针亮红灯，<b>请以本地实测结果为准</b>。</small>";
   }
 
   const htmlReport = `
@@ -350,7 +350,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     <style>
       :root {
         color-scheme: light dark;
-        --text-main: #24292f;
+        --text-normal: #24292f;
         --text-sub: #777777;
         --brand-blue: #0969da;
         --card-bg: rgba(0, 0, 0, 0.04);
@@ -373,14 +373,45 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         --err-body: #cf222e;
       }
 
-      /* 亮色模式默认色彩 */
+      /* 暗黑模式变量映射：全面强制白字 */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text-normal: #ffffff !important;
+          --text-sub: #ffffff !important;
+          --brand-blue: #58a6ff !important;
+          --card-bg: rgba(255, 255, 255, 0.1) !important;
+          --card-border: rgba(255, 255, 255, 0.18) !important;
+          --card-divider: rgba(255, 255, 255, 0.1) !important;
+
+          --succ-bg: rgba(46, 160, 67, 0.22) !important;
+          --succ-border: #3fb950 !important;
+          --succ-title: #3fb950 !important;
+          --succ-body: #ffffff !important;
+
+          --warn-bg: rgba(210, 153, 34, 0.22) !important;
+          --warn-border: #d29922 !important;
+          --warn-title: #f0883e !important;
+          --warn-body: #ffffff !important;
+
+          --err-bg: rgba(248, 81, 73, 0.22) !important;
+          --err-border: #f85149 !important;
+          --err-title: #ff7b72 !important;
+          --err-body: #ffffff !important;
+        }
+
+        /* 强制类名穿透反白 */
+        body, .txt-normal, .table-header, .carrier-name, .sub-text, .udp-tip {
+          color: #ffffff !important;
+        }
+      }
+
       body {
         margin: 0;
         padding: 4px 0;
         font-family: -apple-system, sans-serif;
         font-size: 14px;
         line-height: 1.5;
-        color: var(--text-main);
+        color: var(--text-normal);
         -webkit-user-select: none;
       }
       .card-box {
@@ -388,13 +419,6 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 12px;
-      }
-      .net-label, .net-value {
-        color: var(--text-main);
-      }
-      .brand-name {
-        color: var(--brand-blue);
-        font-weight: bold;
       }
       .status-card {
         border-radius: 8px;
@@ -430,11 +454,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
       .status-body {
         font-size: 13px;
       }
-      .sub-text {
-        color: var(--text-sub);
-      }
       .udp-tip {
-        color: var(--text-sub);
         margin-top: 5px;
         display: block;
         font-size: 11px;
@@ -450,7 +470,6 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         padding: 8px 12px;
         font-size: 13px;
         border-bottom: 1px solid var(--card-border);
-        color: var(--text-main);
       }
       .table-row {
         padding: 10px 12px;
@@ -462,78 +481,40 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
       .table-row:last-child {
         border-bottom: none;
       }
-      .carrier-name {
-        color: var(--text-main);
-        font-weight: bold;
-      }
-
-      /* 暗黑模式：直接命中类名，强行反白 */
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --card-bg: rgba(255, 255, 255, 0.1) !important;
-          --card-border: rgba(255, 255, 255, 0.18) !important;
-          --card-divider: rgba(255, 255, 255, 0.1) !important;
-
-          --succ-bg: rgba(46, 160, 67, 0.22) !important;
-          --succ-border: #3fb950 !important;
-          --succ-title: #3fb950 !important;
-          --succ-body: #ffffff !important;
-
-          --warn-bg: rgba(210, 153, 34, 0.22) !important;
-          --warn-border: #d29922 !important;
-          --warn-title: #f0883e !important;
-          --warn-body: #ffffff !important;
-
-          --err-bg: rgba(248, 81, 73, 0.22) !important;
-          --err-border: #f85149 !important;
-          --err-title: #ff7b72 !important;
-          --err-body: #ffffff !important;
-        }
-
-        /* 重点：归属行、本省拨测标题、电信/联通/移动、小字全部强制纯白 */
-        body,
-        .net-label,
-        .net-value,
-        .table-header,
-        .carrier-name,
-        .sub-text,
-        .udp-tip {
-          color: #ffffff !important;
-        }
-
-        .brand-name {
-          color: #58a6ff !important;
-        }
-      }
     </style>
   </head>
   <body>
-    <!-- 物理网络状态 (归属与宽带) -->
+    <!-- 物理网络状态 (归属与宽带：直接绑定 --text-normal 变量) -->
     <div class="card-box">
-      <div style="font-size: 13px;">
-        <b class="net-label">归属:</b> <span class="net-value">${escapeHtml(localLocStr)}</span> 
-        <span class="net-label" style="opacity: 0.6;"> | </span> 
-        <b class="net-label">宽带:</b> <span class="brand-name">${escapeHtml(localIsp)}</span>
+      <div style="font-size: 13px; color: var(--text-normal);">
+        <b class="txt-normal" style="color: var(--text-normal);">归属:</b> 
+        <span class="txt-normal" style="color: var(--text-normal);">${escapeHtml(localLocStr)}</span> 
+        <span style="color: var(--text-sub); opacity: 0.6;"> | </span> 
+        <b class="txt-normal" style="color: var(--text-normal);">宽带:</b> 
+        <span style="color: var(--brand-blue); font-weight: bold;">${escapeHtml(localIsp)}</span>
       </div>
     </div>
 
-    <!-- 核心综合诊断结论 (抬头运营商阻断) -->
+    <!-- 核心综合诊断结论 (抬头运营商阻断：基准参照行) -->
     <div class="status-card ${feedbackClass}">
       <div class="status-title">${feedbackTitle}</div>
       <div class="status-body">${localFeedbackText}</div>
     </div>
 
-    <!-- 省内三网情况表 (表头与电信/联通/移动) -->
+    <!-- 省内三网情况表 (表头与电信/联通/移动：双重绑定 --text-normal 变量) -->
     <div class="table-box">
-      <div class="table-header">🇨🇳 本省拨测分析 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
+      <div class="table-header txt-normal" style="color: var(--text-normal);">🇨🇳 本省拨测分析 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
       <div class="table-row">
-        <span class="carrier-name">本省电信</span> <span style="font-size: 13px;">${ctRes.html}</span>
+        <span class="carrier-name txt-normal" style="color: var(--text-normal); font-weight: bold;">本省电信</span> 
+        <span style="font-size: 13px;">${ctRes.html}</span>
       </div>
       <div class="table-row">
-        <span class="carrier-name">本省联通</span> <span style="font-size: 13px;">${cuRes.html}</span>
+        <span class="carrier-name txt-normal" style="color: var(--text-normal); font-weight: bold;">本省联通</span> 
+        <span style="font-size: 13px;">${cuRes.html}</span>
       </div>
       <div class="table-row">
-        <span class="carrier-name">本省移动</span> <span style="font-size: 13px;">${cmRes.html}</span>
+        <span class="carrier-name txt-normal" style="color: var(--text-normal); font-weight: bold;">本省移动</span> 
+        <span style="font-size: 13px;">${cmRes.html}</span>
       </div>
     </div>
   </body>
@@ -554,9 +535,9 @@ function finishError(message) {
     <meta charset="utf-8">
     <meta name="color-scheme" content="light dark">
     <style>
-      :root { --text-main: #24292f; }
-      @media (prefers-color-scheme: dark) { :root { --text-main: #ffffff !important; } }
-      body { margin: 0; padding: 6px 0; font-family: -apple-system, sans-serif; color: var(--text-main); font-size: 14px; }
+      :root { --text-normal: #24292f; }
+      @media (prefers-color-scheme: dark) { :root { --text-normal: #ffffff !important; } }
+      body { margin: 0; padding: 6px 0; font-family: -apple-system, sans-serif; color: var(--text-normal); font-size: 14px; }
     </style>
   </head>
   <body>
