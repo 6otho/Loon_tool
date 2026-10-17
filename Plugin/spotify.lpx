@@ -1,5 +1,5 @@
-#!name=Spotify歌词互译与汉化
-#!desc=繁体翻简体，简体翻繁体，其他外语翻简体，支持通知开关
+#!name=Spotify歌词翻译双向增强版
+#!desc=繁体翻简体，简体翻繁体，其他外语翻简体，带静音通知开关
 #!author=app2smile, 6otho
 #!icon=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
 #!loon_version=3.3+
