@@ -5,7 +5,7 @@
  * 
  * @Author: RavelloH, RuCu6
  * @Modifier: Gemini
- * @Updated: 2026-07-17-c
+ * @Updated: 2026-07-17-c (已做亮暗模式UI适配)
  *
  * ===== Loon =====
  * [Script]
@@ -43,7 +43,7 @@ async function run() {
 
     const localRegionEn = getRegionEn(localNetZh?.regionName, localNetEn?.regionName);
 
-    // 请求省内与核心城市探针数据 (已彻底重构为防连坐并发模式)
+    // 请求省内与核心城市探针数据 (并发防连坐模式)
     const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
 
     render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol, localRegionEn);
@@ -84,7 +84,7 @@ function testNativeProxy(targetNodeName) {
   });
 }
 
-// === 2. 并发防连坐探针抓取 (彻底解决 422 报错导致全军覆没的问题) ===
+// === 2. 并发探针抓取 ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -116,22 +116,15 @@ async function runProvinceCheck(info, localRegion, isUdp) {
     "Tianjin": ["Tianjin"]
   };
 
-  // 构造 5 个完全独立的请求条件
   const independentQueries = [];
-  
-  // 1. 全省盲扫保底 (拿电信)
   independentQueries.push([{ "magic": localRegion, "limit": 3 }]);
-  // 2. 单独死磕本省联通 (AS4837)
   independentQueries.push([{ "magic": localRegion, "asn": 4837, "limit": 2 }]);
-  // 3. 单独死磕本省移动 (AS9808)
   independentQueries.push([{ "magic": localRegion, "asn": 9808, "limit": 2 }]);
   
-  // 4 & 5. 单独死磕本省前两大城市 (如深圳、广州，解决城市名没填省份的问题)
   const cities = cityMap[localRegion] || [];
   if (cities[0]) independentQueries.push([{ "magic": cities[0], "limit": 2 }]);
   if (cities[1]) independentQueries.push([{ "magic": cities[1], "limit": 2 }]);
 
-  // 并发发送这 5 个请求！某一个 422 报错绝不影响其他的成功返回！
   const tasks = independentQueries.map(async (locArray) => {
     const body = {
       target: target,
@@ -150,14 +143,12 @@ async function runProvinceCheck(info, localRegion, isUdp) {
         return await pollGlobalpingResult(submission.id);
       }
     } catch (e) {
-      // 默默吃掉 422 错误，保证其他成功的请求不受牵连
       return null;
     }
   });
 
   const results = await Promise.all(tasks);
   
-  // 汇总所有成功返回的探针数据
   const mergedResult = { results: [] };
   results.forEach(res => {
     if (res && Array.isArray(res.results)) {
@@ -215,7 +206,7 @@ async function pollGlobalpingResult(id) {
   const url = `${GLOBALPING_API}/${id}`;
   let attempts = 0;
   while (attempts < 5) {
-    await wait(1800); // 缩短等待间隙，提升并发收集速度
+    await wait(1800);
     const res = await requestJson(url, "DIRECT");
     if (res && res.status !== "in_progress") return res;
     attempts++;
@@ -255,13 +246,16 @@ function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function escapeHtml(str) { return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 function render(localNet, localTest, testResult, isUdp, localRegionEn) {
+  // 无探针提示包裹 var(--text-sub)，亮灰暗白
+  const defaultEmptyText = (name) => `<span style="color: var(--text-sub);">🚫 平台暂无本省【${name}】机器</span>`;
+
   const operatorMap = {
-    ct: { name: "电信", status: "🚫 平台暂无本省【电信】机器" },
-    cu: { name: "联通", status: "🚫 平台暂无本省【联通】机器" },
-    cm: { name: "移动", status: "🚫 平台暂无本省【移动】机器" }
+    ct: { name: "电信", status: defaultEmptyText("电信") },
+    cu: { name: "联通", status: defaultEmptyText("联通") },
+    cm: { name: "移动", status: defaultEmptyText("移动") }
   };
 
-  // 整理并提取汇总后的探针数据
+  // 整理探针数据
   if (testResult && Array.isArray(testResult.results)) {
     testResult.results.forEach((item) => {
       const opKey = classifyOperator(item.probe);
@@ -273,8 +267,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
 
       let statusText = loss === 100 || avg === null ? `❌ 阻断 (${city})` : (loss > 0 ? `⚠️ 丢包 ${loss}% (${city})` : `✅ 畅通 (${avg.toFixed(1)}ms - ${city})`);
       
-      // 优选逻辑：只要测试出能通的数据，就立刻覆盖之前的报错或空白数据
-      if (operatorMap[opKey].status.startsWith("🚫") || operatorMap[opKey].status.includes("阻断") || statusText.startsWith("✅")) {
+      if (operatorMap[opKey].status.includes("暂无") || operatorMap[opKey].status.includes("阻断") || statusText.startsWith("✅")) {
         operatorMap[opKey].status = `<span style="color: ${loss === 100 ? '#ff4d4f' : (loss > 0 ? '#faad14' : '#52c41a')}; font-weight: bold;">${statusText}</span>`;
       }
     });
@@ -287,46 +280,144 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
   }
 
   let feedbackTitle = localTest.reachable ? "🟢 本地当前网络测试通畅" : "🔴 本地当前网络无法直连";
-  let feedbackBg = localTest.reachable ? "#dafbe1" : "#ffebe9";
-  let feedbackText = localTest.reachable ? "#1a7f37" : "#cf222e";
-  let feedbackBorder = localTest.reachable ? "#57ab5a" : "#ff8182";
+  let feedbackClass = localTest.reachable ? "status-success" : "status-error";
+  
   let localFeedbackText = localTest.reachable 
     ? `该节点在你的 <b>${localIsp}</b> 网络下正常工作，已通过 Loon 原生内核验证。`
     : `该节点在你的 <b>${localIsp}</b> 网络下连接超时，可能已被阻断或节点离线。`;
 
   if (isUdp) {
-    localFeedbackText += "<br/><small style='color: #666; margin-top: 4px; display: block;'>注：此为 UDP 协议。部分节点服务端默认禁 Ping，可能导致下方省内探针亮红灯，<b>请以本地实测结果为准</b>。</small>";
+    localFeedbackText += "<br/><small class='udp-tip'>注：此为 UDP 协议。部分节点服务端默认禁 Ping，可能导致下方省内探针亮红灯，<b>请以本地实测结果为准</b>。</small>";
   }
 
   const htmlReport = `
-  <div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.5; color: #24292f;">
-    
+  <!doctype html>
+  <html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <style>
+      :root {
+        --text-main: #24292f;
+        --text-sub: #777777;           /* 亮模式小字：灰色 */
+        --brand-blue: #0969da;
+        --card-bg: rgba(0, 0, 0, 0.03);
+        --card-border: rgba(0, 0, 0, 0.1);
+        --card-divider: rgba(0, 0, 0, 0.06);
+
+        --succ-bg: #dafbe1;
+        --succ-text: #1a7f37;
+        --succ-border: #57ab5a;
+
+        --err-bg: #ffebe9;
+        --err-text: #cf222e;
+        --err-border: #ff8182;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text-main: #ffffff;
+          --text-sub: #ffffff;         /* 暗模式小字：反转为纯白 */
+          --brand-blue: #58a6ff;
+          --card-bg: rgba(255, 255, 255, 0.08);
+          --card-border: rgba(255, 255, 255, 0.16);
+          --card-divider: rgba(255, 255, 255, 0.08);
+
+          --succ-bg: rgba(46, 160, 67, 0.18);
+          --succ-text: #3fb950;
+          --succ-border: #3fb950;
+
+          --err-bg: rgba(248, 81, 73, 0.18);
+          --err-text: #ff7b72;
+          --err-border: #ff7b72;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 4px 0;
+        font-family: -apple-system, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--text-main);
+        -webkit-user-select: none;
+      }
+      .card-box {
+        background: var(--card-bg);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      .status-card {
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .status-success {
+        background: var(--succ-bg);
+        color: var(--succ-text);
+        border-left: 5px solid var(--succ-border);
+      }
+      .status-error {
+        background: var(--err-bg);
+        color: var(--err-text);
+        border-left: 5px solid var(--err-border);
+      }
+      .udp-tip {
+        color: var(--text-sub);
+        margin-top: 4px;
+        display: block;
+        font-size: 11px;
+      }
+      .table-box {
+        border-radius: 8px;
+        border: 1px solid var(--card-border);
+        overflow: hidden;
+      }
+      .table-header {
+        background: var(--card-bg);
+        font-weight: bold;
+        padding: 8px 12px;
+        font-size: 13px;
+        border-bottom: 1px solid var(--card-border);
+        color: var(--text-main);
+      }
+      .table-row {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--card-divider);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .table-row:last-child {
+        border-bottom: none;
+      }
+    </style>
+  </head>
+  <body>
     <!-- 物理网络状态 -->
-    <div style="background: rgba(0,0,0,0.03); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-      <div style="font-size: 13px;"><b>归属:</b> ${escapeHtml(localLocStr)} | <b>宽带:</b> <span style="color:#0969da; font-weight:bold;">${escapeHtml(localIsp)}</span></div>
+    <div class="card-box">
+      <div style="font-size: 13px;"><b>归属:</b> ${escapeHtml(localLocStr)} | <b>宽带:</b> <span style="color: var(--brand-blue); font-weight: bold;">${escapeHtml(localIsp)}</span></div>
     </div>
 
     <!-- 核心诊断结论 -->
-    <div style="background: ${feedbackBg}; color: ${feedbackText}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border-left: 5px solid ${feedbackBorder};">
+    <div class="status-card ${feedbackClass}">
       <div style="font-weight: bold; font-size: 15px; margin-bottom: 4px;">${feedbackTitle}</div>
       <div style="font-size: 13px;">${localFeedbackText}</div>
     </div>
 
     <!-- 省内三网情况表 -->
-    <div style="border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); overflow: hidden;">
-      <div style="background: rgba(0,0,0,0.04); font-weight: bold; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">🇨🇳 本省及核心城市拨测 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
-      <div style="padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between;">
+    <div class="table-box">
+      <div class="table-header">🇨🇳 本省及核心城市拨测 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
+      <div class="table-row">
         <b>本省电信</b> <span style="font-size: 13px;">${operatorMap.ct.status}</span>
       </div>
-      <div style="padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between;">
+      <div class="table-row">
         <b>本省联通</b> <span style="font-size: 13px;">${operatorMap.cu.status}</span>
       </div>
-      <div style="padding: 10px 12px; display: flex; justify-content: space-between;">
+      <div class="table-row">
         <b>本省移动</b> <span style="font-size: 13px;">${operatorMap.cm.status}</span>
       </div>
     </div>
-
-  </div>`;
+  </body>
+  </html>`;
 
   $done({
     title: "🌐 运营商阻断检测报告",
@@ -336,5 +427,25 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
 }
 
 function finishError(message) {
-  $done({ title: "🌐 检测失败", content: `🛑 ${message}`, htmlMessage: `<div style="font-family: sans-serif; font-size: 15px;"><b>🛑 ${escapeHtml(message)}</b></div>` });
+  const errHtml = `
+  <!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      :root { --text-main: #24292f; }
+      @media (prefers-color-scheme: dark) { :root { --text-main: #ffffff; } }
+      body { margin: 0; padding: 6px 0; font-family: -apple-system, sans-serif; color: var(--text-main); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <b>🛑 ${escapeHtml(message)}</b>
+  </body>
+  </html>`;
+
+  $done({ 
+    title: "🌐 检测失败", 
+    content: `🛑 ${message}`, 
+    htmlMessage: errHtml 
+  });
 }
