@@ -1,5 +1,5 @@
 /**
- * 本地运营商阻断检测 · Loon generic 脚本 (暗黑全面适配 & 阻断判断增强版)
+ * 本地运营商阻断检测 · Loon generic 脚本 (暗黑全面白字修复版)
  *
  * 使用: 在 Loon 的节点页面对目标执行「运营商阻断查询」
  * 
@@ -43,7 +43,7 @@ async function run() {
 
     const localRegionEn = getRegionEn(localNetZh?.regionName, localNetEn?.regionName);
 
-    // 请求省内与核心城市探针数据 (多节点防连坐并发抓取)
+    // 请求省内与核心城市探针数据 (多节点并发防连坐)
     const testResult = await runProvinceCheck(nodeInfo, localRegionEn, isUdpProtocol);
 
     render(localNetZh || localNetEn, localTest, testResult, isUdpProtocol, localRegionEn);
@@ -84,7 +84,7 @@ function testNativeProxy(targetNodeName) {
   });
 }
 
-// === 2. 优化并发探针抓取 (限定 CN + 省份精准定位) ===
+// === 2. 优化并发探针抓取 ===
 async function runProvinceCheck(info, localRegion, isUdp) {
   const address = info?.address ? String(info.address) : "";
   const port = info?.port ? Number(info.port) : 443;
@@ -117,16 +117,11 @@ async function runProvinceCheck(info, localRegion, isUdp) {
   };
 
   const independentQueries = [];
-  // 1. 全省广义盲扫保底 (带 country: CN 避免误跑国外)
   independentQueries.push([{ country: "CN", magic: localRegion, limit: 3 }]);
-  // 2. 锁定本省电信骨干 (AS4134, AS4809)
   independentQueries.push([{ country: "CN", magic: localRegion, asn: 4134, limit: 2 }]);
-  // 3. 锁定本省联通骨干 (AS4837)
   independentQueries.push([{ country: "CN", magic: localRegion, asn: 4837, limit: 2 }]);
-  // 4. 锁定本省移动骨干 (AS9808)
   independentQueries.push([{ country: "CN", magic: localRegion, asn: 9808, limit: 2 }]);
   
-  // 5. 核心城市保底
   const cities = cityMap[localRegion] || [];
   if (cities[0]) independentQueries.push([{ country: "CN", magic: cities[0], limit: 2 }]);
   if (cities[1]) independentQueries.push([{ country: "CN", magic: cities[1], limit: 2 }]);
@@ -220,15 +215,11 @@ async function pollGlobalpingResult(id) {
   return await requestJson(url, "DIRECT");
 }
 
-// 扩充全国主流运营商 ASN
 function classifyOperator(probe) {
   const asn = Number(probe.asn);
   const net = String(probe.network || "").toLowerCase();
-  // 电信 (163, CN2, 省网)
   if ([4134, 4809, 23724, 38283, 134764, 134760].includes(asn) || net.includes("telecom") || net.includes("电信") || net.includes("chinatelecom")) return "ct";
-  // 联通 (169, A网, 国际)
   if ([4837, 9929, 10099, 17621, 17622].includes(asn) || net.includes("unicom") || net.includes("联通") || net.includes("chinaunicom")) return "cu";
-  // 移动 (CMNET, CMI, 省网)
   if ([9808, 58453, 56040, 56041, 56042, 56044, 24400].includes(asn) || net.includes("mobile") || net.includes("移动") || net.includes("chinamobile")) return "cm";
   return "other";
 }
@@ -256,7 +247,6 @@ function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function escapeHtml(str) { return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 function render(localNet, localTest, testResult, isUdp, localRegionEn) {
-  // 结构化收集三网探针数据（多探针汇总，防误报）
   const opData = {
     ct: { name: "电信", probes: [] },
     cu: { name: "联通", probes: [] },
@@ -274,7 +264,6 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     });
   }
 
-  // 科学汇总运营商阻断状态
   let blockedCount = 0;
   let activeProbeOps = 0;
 
@@ -317,7 +306,6 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
     localLocStr = `${localNet.regionName || ""} ${localNet.city || ""}`;
   }
 
-  // === 智能综合阻断诊断 ===
   let feedbackTitle = "";
   let feedbackClass = "";
   let localFeedbackText = "";
@@ -363,7 +351,7 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
       :root {
         color-scheme: light dark;
         --text-main: #24292f;
-        --text-sub: #777777;           /* 亮模式：灰字 */
+        --text-sub: #777777;
         --brand-blue: #0969da;
         --card-bg: rgba(0, 0, 0, 0.04);
         --card-border: rgba(0, 0, 0, 0.1);
@@ -384,34 +372,8 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         --err-title: #cf222e;
         --err-body: #cf222e;
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --text-main: #ffffff !important;
-          --text-sub: #ffffff !important;   /* 暗模式：纯白 */
-          --brand-blue: #58a6ff !important;
-          --card-bg: rgba(255, 255, 255, 0.1) !important;
-          --card-border: rgba(255, 255, 255, 0.18) !important;
-          --card-divider: rgba(255, 255, 255, 0.1) !important;
 
-          /* 暗黑模式下：半透明深底 + 亮色标题 + 纯白内容正文 */
-          --succ-bg: rgba(46, 160, 67, 0.22) !important;
-          --succ-border: #3fb950 !important;
-          --succ-title: #3fb950 !important;
-          --succ-body: #ffffff !important;
-
-          --warn-bg: rgba(210, 153, 34, 0.22) !important;
-          --warn-border: #d29922 !important;
-          --warn-title: #f0883e !important;
-          --warn-body: #ffffff !important;
-
-          --err-bg: rgba(248, 81, 73, 0.22) !important;
-          --err-border: #f85149 !important;
-          --err-title: #ff7b72 !important;
-          --err-body: #ffffff !important;
-        }
-      }
-
-      * { box-sizing: border-box; }
+      /* 亮色模式默认色彩 */
       body {
         margin: 0;
         padding: 4px 0;
@@ -426,7 +388,13 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 12px;
+      }
+      .net-label, .net-value {
         color: var(--text-main);
+      }
+      .brand-name {
+        color: var(--brand-blue);
+        font-weight: bold;
       }
       .status-card {
         border-radius: 8px;
@@ -463,10 +431,10 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         font-size: 13px;
       }
       .sub-text {
-        color: var(--text-sub) !important;
+        color: var(--text-sub);
       }
       .udp-tip {
-        color: var(--text-sub) !important;
+        color: var(--text-sub);
         margin-top: 5px;
         display: block;
         font-size: 11px;
@@ -490,36 +458,82 @@ function render(localNet, localTest, testResult, isUdp, localRegionEn) {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        color: var(--text-main);
       }
       .table-row:last-child {
         border-bottom: none;
       }
+      .carrier-name {
+        color: var(--text-main);
+        font-weight: bold;
+      }
+
+      /* 暗黑模式：直接命中类名，强行反白 */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --card-bg: rgba(255, 255, 255, 0.1) !important;
+          --card-border: rgba(255, 255, 255, 0.18) !important;
+          --card-divider: rgba(255, 255, 255, 0.1) !important;
+
+          --succ-bg: rgba(46, 160, 67, 0.22) !important;
+          --succ-border: #3fb950 !important;
+          --succ-title: #3fb950 !important;
+          --succ-body: #ffffff !important;
+
+          --warn-bg: rgba(210, 153, 34, 0.22) !important;
+          --warn-border: #d29922 !important;
+          --warn-title: #f0883e !important;
+          --warn-body: #ffffff !important;
+
+          --err-bg: rgba(248, 81, 73, 0.22) !important;
+          --err-border: #f85149 !important;
+          --err-title: #ff7b72 !important;
+          --err-body: #ffffff !important;
+        }
+
+        /* 重点：归属行、本省拨测标题、电信/联通/移动、小字全部强制纯白 */
+        body,
+        .net-label,
+        .net-value,
+        .table-header,
+        .carrier-name,
+        .sub-text,
+        .udp-tip {
+          color: #ffffff !important;
+        }
+
+        .brand-name {
+          color: #58a6ff !important;
+        }
+      }
     </style>
   </head>
   <body>
-    <!-- 物理网络状态 -->
+    <!-- 物理网络状态 (归属与宽带) -->
     <div class="card-box">
-      <div style="font-size: 13px;"><b>归属:</b> ${escapeHtml(localLocStr)} | <b>宽带:</b> <span style="color: var(--brand-blue); font-weight: bold;">${escapeHtml(localIsp)}</span></div>
+      <div style="font-size: 13px;">
+        <b class="net-label">归属:</b> <span class="net-value">${escapeHtml(localLocStr)}</span> 
+        <span class="net-label" style="opacity: 0.6;"> | </span> 
+        <b class="net-label">宽带:</b> <span class="brand-name">${escapeHtml(localIsp)}</span>
+      </div>
     </div>
 
-    <!-- 核心综合诊断结论 -->
+    <!-- 核心综合诊断结论 (抬头运营商阻断) -->
     <div class="status-card ${feedbackClass}">
       <div class="status-title">${feedbackTitle}</div>
       <div class="status-body">${localFeedbackText}</div>
     </div>
 
-    <!-- 省内三网情况表 -->
+    <!-- 省内三网情况表 (表头与电信/联通/移动) -->
     <div class="table-box">
       <div class="table-header">🇨🇳 本省拨测分析 ${isUdp ? "(ICMP Ping)" : "(TCP 端口)"}</div>
       <div class="table-row">
-        <b>本省电信</b> <span style="font-size: 13px;">${ctRes.html}</span>
+        <span class="carrier-name">本省电信</span> <span style="font-size: 13px;">${ctRes.html}</span>
       </div>
       <div class="table-row">
-        <b>本省联通</b> <span style="font-size: 13px;">${cuRes.html}</span>
+        <span class="carrier-name">本省联通</span> <span style="font-size: 13px;">${cuRes.html}</span>
       </div>
       <div class="table-row">
-        <b>本省移动</b> <span style="font-size: 13px;">${cmRes.html}</span>
+        <span class="carrier-name">本省移动</span> <span style="font-size: 13px;">${cmRes.html}</span>
       </div>
     </div>
   </body>
