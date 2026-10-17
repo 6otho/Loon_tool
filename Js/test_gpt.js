@@ -1,10 +1,10 @@
 /*
-作者: @mcdasheng
+作者: @mcdasheng (修复优化版)
 脚本功能: ChatGPT解锁查询
 [Script]
   generic script-path=https://raw.githubusercontent.com/MCdasheng/Loon/main/Streaming/ChatGPT.js, timeout=10, img-url=https://raw.githubusercontent.com/chxm1023/Script_X/main/icon/ChatGPT/ChatGPT4.png
 @params
-  "ipinfo_token": https://ipinfo.io 官网自行申请 
+  "ipinfo_token": https://ipinfo.io 官网自行申请 (可选)
 @thanks
   @getSomeCats
 */
@@ -27,12 +27,14 @@ ChatGPT_Test()
   });
 
 async function ChatGPT_Test() {
-  var ip = await getIp();
+  // 安全获取 IP，即使失败也不中断主流程
+  var ip = await getIp().catch(() => null);
+
   // prettier-ignore
   let chatGPT_regions = ["AL", "DZ", "AF", "AD", "AO", "AG", "AR", "AM", "AU", "AT", "AZ", "BS", "BH", "BD", "BB", "BE", "BZ", "BJ", "BT", "BO", "BA", "BW", "BR", "BN", "BG", "BF", "BI", "CV", "KH", "CM", "CA", "CF", "TD", "CL", "CO", "KM", "CG", "CD", "CR", "CI", "HR", "CY", "CZ", "DK", "DJ", "DM", "DO", "EC", "EG", "SV", "GQ", "ER", "EE", "SZ", "ET", "FJ", "FI", "FR", "GA", "GM", "GE", "DE", "GH", "GR", "GD", "GT", "GN", "GW", "GY", "HT", "VA", "HN", "HU", "IS", "IN", "ID", "IQ", "IE", "IL", "IT", "JM", "JP", "JO", "KZ", "KE", "KI", "KW", "KG", "LA", "LV", "LB", "LS", "LR", "LY", "LI", "LT", "LU", "MG", "MW", "MY", "MV", "ML", "MT", "MH", "MR", "MU", "MX", "FM", "MD", "MC", "MN", "ME", "MA", "MZ", "MM", "NA", "NR", "NP", "NL", "NZ", "NI", "NE", "NG", "MK", "NO", "OM", "PK", "PW", "PS", "PA", "PG", "PY", "PE", "PH", "PL", "PT", "QA", "RO", "RW", "KN", "LC", "VC", "WS", "SM", "ST", "SA", "SN", "RS", "SC", "SL", "SG", "SK", "SI", "SB", "SO", "ZA", "KR", "SS", "ES", "LK", "SR", "SE", "CH", "SD", "TW", "TJ", "TZ", "TH", "TL", "TG", "TO", "TT", "TN", "TR", "TM", "TV", "UG", "UA", "AE", "GB", "US", "UY", "UZ", "VU", "VN", "YE", "ZM", "ZW"];
   
   var options = {
-    url: `https://chat.openai.com/cdn-cgi/trace`,
+    url: `https://chatgpt.com/cdn-cgi/trace`,
     headers: {
       "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36`,
       "Content-Type": "text/json",
@@ -41,7 +43,7 @@ async function ChatGPT_Test() {
       "Accept-Encoding": "gzip, deflate, br",
     },
     ...(currentNode ? { node: currentNode } : {}),
-    timeout: 5000,
+    timeout: 6000,
   };
 
   return $.http.get(options).then(
@@ -49,31 +51,35 @@ async function ChatGPT_Test() {
       var body = resp.body;
       $.log(body);
 
+      if (!body || body.indexOf("loc=") === -1) {
+        throw new Error("无法获取 ChatGPT trace 响应");
+      }
+
       let lines = body.split("\n");
       let cf = lines.reduce((a, line) => {
         let [key, value] = line.split("=");
-        a[key] = value;
+        if (key && value) a[key.trim()] = value.trim();
         return a;
       }, {});
 
-      var gpt_warp = cf.warp === "plus" || cf.warp === "on" ? true : false;
+      var gpt_warp = cf.warp === "plus" || cf.warp === "on";
       var gpt_ip;
 
-      if (gpt_warp == true) {
+      if (gpt_warp) {
         gpt_ip = "🟢WARP解锁";
-      } else if (cf.ip == ip) {
+      } else if (ip && cf.ip == ip) {
         gpt_ip = "🎉原生解锁";
       } else {
         gpt_ip = "🟡代理解锁";
       }
 
-      let gpt_country = getCountryFlagEmoji(cf.loc) + cf.loc;
-
+      let gpt_country = getCountryFlagEmoji(cf.loc) + " " + cf.loc;
       let gpt = "";
+
       if (chatGPT_regions.indexOf(cf.loc) !== -1) {
         gpt = `${gpt_ip} ➟ ${gpt_country}`;
       } else {
-        gpt = "🚫未解锁";
+        gpt = `🚫未解锁 (${cf.loc || "未知"})`;
       }
 
       $.log(gpt);
@@ -93,7 +99,7 @@ async function ChatGPT_Test() {
       res =
         res +
         "------------------------------" +
-        `</br><font color=#6959CD><b>节点</b> ➟ ${currentNode || "当前分流节点"} </font>`;
+        `</br><font color=#6959CD><b>节点</b> ➟ ${currentNode || "当前分流策略"} </font>`;
 
       res =
         `<p style="text-align: center; font-family: -apple-system; font-size: large; font-weight: thin">` +
@@ -111,14 +117,20 @@ async function ChatGPT_Test() {
     },
     (reason) => {
       $.log("🔴ChatGPT test error");
-      $.log(reason.error);
-      $.done();
+      $.log(reason?.error || reason);
+      if (typeof $done !== "undefined") {
+        $done({
+          title: "      ChatGPT 查询结果",
+          htmlMessage: `<p style="text-align: center;">🔴 连接超时或节点不可用</p>`,
+        });
+      }
     }
   );
 }
 
-//获取国旗Emoji函数
+// 获取国旗Emoji函数
 function getCountryFlagEmoji(countryCode) {
+  if (!countryCode) return "🏳️";
   if (countryCode.toUpperCase() == "TW") {
     countryCode = "WS";
   }
@@ -129,31 +141,35 @@ function getCountryFlagEmoji(countryCode) {
   return String.fromCodePoint(...codePoints);
 }
 
+// 优化后的 IP 查询函数：优先稳定不限流的接口，增加失败降级，不再强退
 async function getIp() {
+  // 如果用户填写了 token 则使用 ipinfo，否则直接走稳定不限流的 ipify
+  const targetUrl = $.token
+    ? `https://ipinfo.io/json?token=${$.token}`
+    : `https://api.ipify.org?format=json`;
+
   var options = {
-    url: `https://ipinfo.io/json?token=${$.token}`,
+    url: targetUrl,
     headers: {
       "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36`,
-      "Content-Type": "application/json",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-      "Accept-Encoding": "gzip, deflate, br",
+      Accept: "application/json",
     },
     ...(currentNode ? { node: currentNode } : {}),
+    timeout: 4000,
   };
 
-  // 主函数
-  return $.http.get(options).then((resp) => {
-    $.log(resp.body);
-    var obj = JSON.parse(resp.body);
-    if (!obj.ip) {
-      $.log("🔴ip查询失败!");
-      $.log(resp.body);
-      $.msg($.name, "🔴ip查询失败!");
-      $.done();
-    }
-    return obj.ip;
-  });
+  return $.http.get(options).then(
+    (resp) => {
+      try {
+        var obj = JSON.parse(resp.body);
+        if (obj && obj.ip) {
+          return obj.ip;
+        }
+      } catch (e) {}
+      return null;
+    },
+    () => null
+  );
 }
 
 // prettier-ignore
