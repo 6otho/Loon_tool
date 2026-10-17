@@ -1,14 +1,13 @@
-#!name=Spotify歌词翻译
-#!desc=通过百度翻译API实现歌词汉化，修复新版歌词翻译域名无法触发问题
-#!author=6otho[https://github.com/6otho],app2smile[https://github.com/app2smile]
-#!homepage=https://t.me/PaKo_Ov_Chan
+#!name=Spotify歌词翻译(修复版)
+#!desc=修复繁体中文误翻译导致的超时死循环，支持通知开关
+#!author=app2smile, 6otho
 #!icon=https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
 #!loon_version=3.3+
-#!date=2025-06-23 00:00:00
 
 [Argument]
 appid=input,tag=百度appid,desc=此处填写百度appid
 securityKey=input,tag=百度密钥,desc=此处填写百度密钥
+notify=switch,false,tag=开启错误通知,desc=是否开启翻译报错横幅提示(默认关闭)
 
 [Rule]
 AND, ((DOMAIN, spclient.wg.spotify.com),   (PROTOCOL, QUIC)), REJECT
@@ -16,7 +15,7 @@ AND, ((DOMAIN, gae2-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 AND, ((DOMAIN, guc3-spclient.spotify.com), (PROTOCOL, QUIC)), REJECT
 
 [Script]
-http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=15,script-path=https://raw.githubusercontent.com/6otho/Loon_tool/main/Js/Spotify_lyrics.js,argument=[{appid},{securityKey}]
+http-response ^https://(?:spclient\.wg|gae2-spclient|guc3-spclient)\.spotify\.com(?::443)?/color-lyrics/v2/track/ requires-body=true,binary-body-mode=true,timeout=15,script-path=Spotify_lyrics.js,argument=[{appid},{securityKey},{notify}]
 
 [MITM]
 hostname = *.spotify.com
