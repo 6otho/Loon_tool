@@ -1,12 +1,14 @@
 /*
 作者：@xream @keywos @wuhu_zzz @ TEXAS @整点猫咪 技术指导：整点薯条 
-网络测速脚本 - 默认5MB测试流量
+修改：排版适配 Loon 速度测试原生样式
 参数说明：
-title：标题（默认：网络测速）
+title：标题（默认：速度测试）
+source：测速平台名称（默认：Apple CDN）
+mb 或 down_mb：下载测试流量（默认5MB）
+up_mb：上传测试流量（默认2MB，设为0则不测上传）
+mode：测试方式文字（默认：单路）
 iconfast、iconmid、iconslow：测速快中慢时的图标
 colorlow、colormid、colorhigh：延迟低中高时的图标颜色
-mb：每次测试消耗的流量（默认5MB）
-notify：是否发送通知（默认关闭）
 */
 
 // ===================== 精简环境适配器 =====================
@@ -27,9 +29,24 @@ function Env(name) {
       return new Promise((resolve, reject) => {
         if (this.isSurge() || this.isLoon() || this.isStash()) {
           $httpClient.get(options, (error, response, body) => {
-            error ? reject(error) : resolve({ status: response.status, headers: response.headers, body });
+            error ? reject(error) : resolve({ status: response?.status, headers: response?.headers, body });
           });
         } else if (this.isQuanX()) {
+          $task.fetch(options).then(
+            response => resolve({ status: response.statusCode, headers: response.headers, body: response.body }),
+            error => reject(error)
+          );
+        }
+      });
+    },
+    post: (options) => {
+      return new Promise((resolve, reject) => {
+        if (this.isSurge() || this.isLoon() || this.isStash()) {
+          $httpClient.post(options, (error, response, body) => {
+            error ? reject(error) : resolve({ status: response?.status, headers: response?.headers, body });
+          });
+        } else if (this.isQuanX()) {
+          options.method = 'POST';
           $task.fetch(options).then(
             response => resolve({ status: response.statusCode, headers: response.headers, body: response.body }),
             error => reject(error)
@@ -39,10 +56,8 @@ function Env(name) {
     }
   };
   
-  // 通知方法 - 默认不调用
-  this.msg = (title, subtitle, body) => {
-    // 默认不发送通知
-  };
+  // 通知方法
+  this.msg = (title, subtitle, body) => {};
   
   // 日志方法
   this.log = console.log;
@@ -53,10 +68,10 @@ function Env(name) {
     const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.');
     let result = obj;
     for (const key of keys) {
+      if (result === undefined || result === null) return defaultValue;
       result = result[key];
-      if (result === undefined) return defaultValue;
     }
-    return result;
+    return result !== undefined ? result : defaultValue;
   };
   
   // 结束方法
@@ -67,7 +82,7 @@ function Env(name) {
   };
 }
 
-const $ = new Env('网络测速');
+const $ = new Env('速度测试');
 // ===================== 精简环境适配器结束 =====================
 
 let arg = {};
@@ -75,86 +90,115 @@ if (typeof $argument !== 'undefined') {
   arg = Object.fromEntries($argument.split('&').map(item => item.split('=')));
 }
 
-let title = '';
+let title = arg?.title || "速度测试";
 let content = '';
 let icon = '';
 let color = '';
 
 !(async () => {
-  if ($.isTile()) {
-    console.log('网络测速开始...');
-  }
+  const nodeTarget = $.lodash_get($environment, 'params.node');
+  const nodeName = 
+    $.lodash_get($environment, 'params.nodeInfo.name') || 
+    nodeTarget || 
+    arg?.node || 
+    '当前节点';
+
+  const sourceName = arg?.source || 'Apple CDN';
+  const testMode = arg?.mode || '单路';
   
-  // 默认使用5MB测试流量
-  const mb = $.lodash_get(arg, 'mb') || 5;
-  const bytes = mb * 1024 * 1024;
+  // 测试流量大小设置
+  const downMb = Number(arg?.down_mb || arg?.mb || 5);
+  const upMb = Number(arg?.up_mb !== undefined ? arg.up_mb : 2); // 默认测 2MB 上传
   
-  // 智能超时设置：基础5秒 + 每MB增加1秒
-  const downloadTimeout = 5000 + mb * 1000;
-  console.log(`测试数据量: ${mb}MB, 超时时间: ${downloadTimeout / 1000}秒`);
+  const downBytes = downMb * 1024 * 1024;
+  const downTimeout = 5000 + downMb * 1000;
   
+  let downloadMbps = '0.00';
+  let uploadMbps = '--';
+  let totalDuration = 0;
+  let totalTraffic = downMb;
+  let pingt = 0;
+
   try {
-    let start = Date.now();
-    const res = await $.http.get({
-      url: `https://speed.cloudflare.com/__down?bytes=${bytes}`,
-      node: $environment.params.node,
-      timeout: downloadTimeout
-    });
-    
-    const end = Date.now();
-    const duration = (end - start) / 1000;
-    const speed = mb / duration;
-    
-    const pingstart = Date.now();
-    const ping = await $.http.get({
-      url: `http://cp.cloudflare.com/generate_204`,
-      node: $environment.params.node,
+    // 1. 延迟测试
+    const pingStart = Date.now();
+    await $.http.get({
+      url: 'http://cp.cloudflare.com/generate_204',
+      node: nodeTarget,
       timeout: 3000
     });
-    
-    const pingt = Date.now() - pingstart;
-    console.log(`延迟时间: ${pingt}ms`);
-    console.log(`下载耗时: ${duration.toFixed(2)}s`);
-    
-    // 计算速率和延迟对应的图标和颜色
-    const a = Diydecide(0, 50, 100, Math.round(speed * 8));
+    pingt = Date.now() - pingStart;
+
+    // 2. 下行测速
+    const downStart = Date.now();
+    await $.http.get({
+      url: `https://speed.cloudflare.com/__down?bytes=${downBytes}`,
+      node: nodeTarget,
+      timeout: downTimeout
+    });
+    const downEnd = Date.now();
+    const downDuration = (downEnd - downStart) / 1000;
+    const downSpeed = downMb / downDuration;
+    downloadMbps = (downSpeed * 8).toFixed(2);
+    totalDuration += downDuration;
+
+    // 3. 上行测速（若 upMb > 0）
+    if (upMb > 0) {
+      try {
+        const upBytes = upMb * 1024 * 1024;
+        const upData = '0'.repeat(upBytes);
+        const upStart = Date.now();
+        await $.http.post({
+          url: 'https://speed.cloudflare.com/__up',
+          node: nodeTarget,
+          headers: { 'Content-Type': 'text/plain' },
+          body: upData,
+          timeout: 5000 + upMb * 1500
+        });
+        const upEnd = Date.now();
+        const upDuration = (upEnd - upStart) / 1000;
+        const upSpeed = upMb / upDuration;
+        uploadMbps = (upSpeed * 8).toFixed(2);
+        totalDuration += upDuration;
+        totalTraffic += upMb;
+      } catch (upErr) {
+        console.log('上行测速跳过或失败:', upErr?.message || upErr);
+        uploadMbps = '--';
+      }
+    }
+
+    // 状态判定：图标与配色
+    const a = Diydecide(0, 50, 100, Math.round(Number(downloadMbps)));
     const b = Diydecide(0, 100, 200, pingt) + 3;
     
-    let shifts = {
-      '1': arg?.iconslow || 'tortoise',       // 默认慢速图标
-      '2': arg?.iconmid || 'hare',            // 默认中速图标
-      '3': arg?.iconfast || 'bird',           // 默认快速图标
-      '4': arg?.colorlow || '#06D6A0',        // 默认低延迟颜色
-      '5': arg?.colormid || '#FFD166',        // 默认中延迟颜色
-      '6': arg?.colorhigh || '#EF476F'        // 默认高延迟颜色
+    const shifts = {
+      '1': arg?.iconslow || 'tortoise',
+      '2': arg?.iconmid || 'hare',
+      '3': arg?.iconfast || 'speedometer',
+      '4': arg?.colorlow || '#06D6A0',
+      '5': arg?.colormid || '#FFD166',
+      '6': arg?.colorhigh || '#EF476F'
     };
     
     icon = shifts[a];
     color = shifts[b];
-    console.log(`图标: ${shifts[a]}`);
-    console.log(`颜色: ${shifts[b]}`);
-    
-    // 标题默认为中文"网络测速"
-    title = arg?.title || "网络测速";
-    
-    // 格式化测速结果
-    const downloadMbps = Math.round(speed * 8 * 10) / 10;
-    const downloadMBs = Math.round(speed * 10) / 10;
-    
-    content = `节点：${$environment.params.nodeInfo.name}\n`;
-    content += `下行速率：${downloadMbps} Mbps (${downloadMBs} MB/s)\n`;
-    content += `测试耗时：${duration.toFixed(2)}秒\n`;
-    content += `网络延迟：${pingt} ms`;
-    
+
+    // 组装符合截图排版的面板文本
+    content = `${nodeName}\n\n` +
+              `↓ 下载 · ${sourceName}\n` +
+              `${downloadMbps} Mbps\n\n` +
+              `↑ 上传 · ${sourceName}\n` +
+              `${uploadMbps} Mbps\n\n` +
+              `${testMode} · ${totalDuration.toFixed(1)} 秒 · ${totalTraffic.toFixed(1)} MB`;
+
     console.log('✅ 测速成功');
   } catch (e) {
     console.error('❌ 测速失败:', e);
-    title = `❌ 测速失败`;
-    content = `原因: ${e.message || e.error || e}\n请检查网络或节点状态`;
+    title = '❌ 速度测试失败';
+    content = `${nodeName}\n\n原因: ${e.message || e.error || e}\n请检查网络或节点连通性`;
   }
 })()
 .finally(async () => {
-  // 确保返回结果给面板
   const result = { 
     title, 
     content, 
@@ -163,11 +207,11 @@ let color = '';
     ...arg 
   };
   
-  console.log('测速结果:', JSON.stringify(result, null, 2));
+  console.log('测速返回数据:\n', JSON.stringify(result, null, 2));
   $.done(result);
 });
 
-// 确定变量所在区间
+// 确定数值区间
 function Diydecide(x, y, z, item) {
   let array = [x, y, z];
   array.push(item);
