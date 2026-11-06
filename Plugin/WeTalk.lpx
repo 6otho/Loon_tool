@@ -23,7 +23,7 @@ request if ${enable_cookie} == true && ${url} ~= /^https?:\/\/api\.wetalkapp\.co
 request if ${url} ~= /^https?:\/\/api\.wetalkapp\.com\/app\/(?:log(?:in)?Out|sign[oO]ut|disconnect|exit|log?in|sign[iI]n|send(?:Code|_code|Sms)|register|signUp)/i then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_UnlockLogin.js") with tag="WeTalk-解锁登录与拦截退出", timeout=20, requires_body=true
 
 # 3. 定时自动签到任务 (换回原专属图标)
-cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Task.js", {${cron_time}, ${task_arg}}) with tag="WeTalk", img_url="https://upicon.iknn.eu.org/admin/pingme1_1779180397938.jpeg", timeout=1000
+cron ${cron_time} then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Task.js", {${cron_time}, ${task_arg}}) with tag="WeTalk", img_url="https://upicon.iknn.eu.org/admin/wetalk_1779180231812.jpeg", timeout=1000
 
 # 4. 手动一键执行面板 (换回原专属图标)
 # generic then script("https://github.com/6otho/Loon_tool/raw/refs/heads/main/Js/WeTalk_Task.js", {${cron_time}, ${task_arg}}) with tag="WeTalk-手动立即签到", img_url="https://upicon.iknn.eu.org/admin/wetalk_1779180231812.jpeg", timeout=1000
